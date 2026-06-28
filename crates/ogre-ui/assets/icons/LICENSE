@@ -1,0 +1,6 @@
+KDE Breeze icons — vendored symbolic icons used by the Arte Ogre tool palette.
+
+Upstream: https://invent.kde.org/frameworks/breeze-icons
+License:  LGPL-3.0-or-later / LGPL-2.1-only (per the breeze-icons package).
+These icons do not carry inline SPDX headers; their license is the breeze-icons
+package license stated above (LGPL-3.0-or-later / LGPL-2.1-only).

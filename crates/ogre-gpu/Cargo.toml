@@ -1,0 +1,34 @@
+[package]
+name = "ogre-gpu"
+version = "1.3.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+egui = ["dep:egui", "dep:egui-wgpu"]
+
+[dependencies]
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+glam = { workspace = true }
+ahash = { workspace = true }
+kurbo = "0.13"
+ogre-core = { path = "../ogre-core" }
+egui = { workspace = true, optional = true }
+egui-wgpu = { workspace = true, optional = true }
+
+[dev-dependencies]
+image = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+criterion = { workspace = true }
+vello = { version = "0.9", default-features = false, features = ["wgpu"] }
+ogre-vector = { path = "../ogre-vector" }
+ogre-io = { path = "../ogre-io" }
+
+[[bench]]
+name = "filter_throughput"
+harness = false

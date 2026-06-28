@@ -1,0 +1,47 @@
+[package]
+name = "ogre-io"
+version = "1.3.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dev-dependencies]
+criterion = { workspace = true }
+glam = { workspace = true }
+
+[[bench]]
+name = "file_io"
+harness = false
+
+[features]
+default = ["svg"]
+# Optional AI matte refinement: pure-Rust ONNX inference (tract) + an HTTP client
+# to fetch the model on first use. Off by default so the base build stays lean;
+# the shipped binary turns it on.
+ml = ["dep:tract-onnx", "dep:ureq"]
+# Default-on SVG import/export support.
+svg = ["dep:resvg", "dep:usvg", "dep:base64", "dep:kurbo", "dep:ogre-vector"]
+
+[dependencies]
+ogre-core = { path = "../ogre-core" }
+ogre-vector = { path = "../ogre-vector", optional = true }
+tract-onnx = { version = "0.23", optional = true }
+ureq = { workspace = true, optional = true }
+resvg = { version = "0.47", optional = true }
+usvg = { version = "0.47", optional = true }
+base64 = { version = "0.22", optional = true }
+kurbo = { version = "0.13", optional = true }
+serde = { workspace = true }
+rmp-serde = { workspace = true }
+zstd = { workspace = true }
+thiserror = { workspace = true }
+bytemuck = { workspace = true }
+slotmap = { workspace = true }
+ahash = { workspace = true }
+image = { workspace = true, features = ["png", "jpeg", "tiff", "webp", "exr"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
+quick-xml = "0.40"
+psd = "0.3"
+lcms2 = "6"
+flate2 = "1"
+png = "0.18"

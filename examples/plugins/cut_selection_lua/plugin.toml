@@ -1,0 +1,4 @@
+name = "Cut Selection"
+version = "1.0.0"
+kind = "lua"
+entry = "cut_selection.lua"

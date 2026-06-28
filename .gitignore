@@ -1,0 +1,45 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+.claude/
+.codex/
+PLAN.md
+/docs/superpowers/
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# AppImage build artifacts
+AppDir/
+*.AppImage
+*.AppImage.zsync
+
+# Test/output scratch images
+ogre-removedbg*.png
+
+# Isolated development
+.worktrees/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+/docs/superpowers/
+
+# NOTE: Cargo.lock is intentionally tracked — Arte Ogre ships a binary app.
+
+# Review scratch (not committed)
+/_*.log
+/_review_diff.txt
+*.log
+*.pid
+.cache/
+.superpowers/

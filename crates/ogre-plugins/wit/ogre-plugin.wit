@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 VisorCraft LLC
+
+package arte:ogre-plugin;
+
+/// Stable plugin interface for Arte Ogre tile filters.
+///
+/// Version 1.0.0 — the host expects exactly this interface when loading a
+/// `tile-filter` plugin. The contract is intentionally minimal: a single
+/// pure function that transforms one tile of floating-point RGBA pixels.
+interface tile-filter {
+    /// Process one tile of pixels.
+    ///
+    /// * `tile` — input RGBA32F data in row-major order. Length is `w * h * 4`.
+    /// * `w`, `h` — width and height of the tile in pixels.
+    /// * `params` — plugin-specific parameter values (may be empty).
+    ///
+    /// Returns RGBA32F data of the same length as `tile`.
+    process: func(tile: list<f32>, w: u32, h: u32, params: list<f32>) -> list<f32>;
+}
+
+world ogre-plugin-world {
+    export tile-filter;
+}

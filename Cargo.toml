@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ogre-core",
+    "crates/ogre-gpu",
+    "crates/ogre-ui",
+    "crates/ogre-vector",
+    "crates/ogre-io",
+    "crates/ogre-plugins",
+    "crates/ogre",
+]
+
+[workspace.package]
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+glam = { version = "0.33", features = ["bytemuck", "serde"] }
+slotmap = { version = "1", features = ["serde"] }
+ahash = { version = "0.8", features = ["serde"] }
+thiserror = "2"
+bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
+rmp-serde = "1.3"
+zstd = "0.13"
+proptest = "1"
+criterion = "0.8"
+rayon = "1"
+wgpu = "29.0"
+pollster = "0.4"
+image = "0.25"
+egui = "0.35"
+egui-wgpu = "0.35"
+eframe = "0.35"
+egui_dock = "0.20"
+toml = "1.1"
+ureq = "3"
