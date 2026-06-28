@@ -3687,7 +3687,7 @@ dependencies = [
 
 [[package]]
 name = "ogre"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "eframe",
  "egui-wgpu",
@@ -3698,7 +3698,7 @@ dependencies = [
 
 [[package]]
 name = "ogre-core"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -3714,7 +3714,7 @@ dependencies = [
 
 [[package]]
 name = "ogre-gpu"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -3734,7 +3734,7 @@ dependencies = [
 
 [[package]]
 name = "ogre-io"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "ahash",
  "base64",
@@ -3753,6 +3753,7 @@ dependencies = [
  "resvg 0.47.0",
  "rmp-serde",
  "serde",
+ "sha2",
  "slotmap",
  "thiserror 2.0.18",
  "tract-onnx",
@@ -3764,7 +3765,7 @@ dependencies = [
 
 [[package]]
 name = "ogre-plugins"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "bytemuck",
  "mlua",
@@ -3779,7 +3780,7 @@ dependencies = [
 
 [[package]]
 name = "ogre-ui"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "ahash",
  "arboard",
@@ -3806,7 +3807,7 @@ dependencies = [
 
 [[package]]
 name = "ogre-vector"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "cosmic-text",
  "glam",

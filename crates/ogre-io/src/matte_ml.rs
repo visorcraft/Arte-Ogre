@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use ogre_core::{IVec2, Rect, Rgba32F, TiledBuffer};
+use sha2::{Digest, Sha256};
 use tract_onnx::prelude::*;
 
 use crate::color::linear_to_srgb;
@@ -34,6 +35,10 @@ const MODEL_URL: &str =
     "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx";
 /// Expected model size in bytes — a sanity check against a truncated download.
 const MODEL_BYTES: u64 = 178_648_008;
+/// SHA-256 of the legitimate model, pinned so a tampered same-size download is
+/// rejected before it ever reaches the ONNX runtime. HTTPS alone does not stop
+/// a compromised/redirected release asset from serving a malicious model.
+const MODEL_SHA256: &str = "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a";
 
 /// Model-matte value below which a *solid* color-key pixel is treated as
 /// background and eroded. Above it the color-key result is kept untouched.
@@ -95,8 +100,27 @@ pub fn ensure_model() -> Result<PathBuf, IoError> {
             "model download incomplete: {got} of {MODEL_BYTES} bytes"
         )));
     }
+    // Integrity gate: never load bytes we can't pin to the known-good model.
+    if model_sha256(&tmp)? != MODEL_SHA256 {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(IoError::Ml(
+            "model checksum mismatch — refusing to load (possible tampering)".into(),
+        ));
+    }
     std::fs::rename(&tmp, &path)?;
     Ok(path)
+}
+
+/// Stream a file through SHA-256 and return its lowercase-hex digest.
+fn model_sha256(path: &Path) -> Result<String, IoError> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 /// Optimize + cache the runnable model so repeated refinements pay the ~170 MB
@@ -220,6 +244,19 @@ fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_sha256_streams_and_hex_encodes() {
+        // Known-answer test: SHA-256("abc") is a fixed vector. Verifies the
+        // streaming hash + hex formatting that gates the model download.
+        let p = std::env::temp_dir().join(format!("arte-ogre-sha-{}.bin", std::process::id()));
+        std::fs::write(&p, b"abc").unwrap();
+        assert_eq!(
+            model_sha256(&p).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let _ = std::fs::remove_file(&p);
+    }
 
     #[test]
     fn smoothstep_endpoints_and_midpoint() {

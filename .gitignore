@@ -14,10 +14,17 @@
 PLAN.md
 /docs/superpowers/
 
-# Local env
+# Local env / secrets (never commit private keys or credentials)
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa*
+id_ed25519*
 
 # AppImage build artifacts
 AppDir/
@@ -32,7 +39,6 @@ ogre-removedbg*.png
 AGENTS.md
 CLAUDE.md
 GEMINI.md
-/docs/superpowers/
 
 # NOTE: Cargo.lock is intentionally tracked — Arte Ogre ships a binary app.
 
