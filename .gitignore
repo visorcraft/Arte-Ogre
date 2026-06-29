@@ -49,3 +49,6 @@ GEMINI.md
 *.pid
 .cache/
 .superpowers/
+
+# Local release-artifact cache kept by clean_visorcraft_repos
+/_releases/
