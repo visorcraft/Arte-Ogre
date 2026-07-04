@@ -418,6 +418,57 @@ pub enum FileDialog {
     },
 }
 
+/// Native file picker currently running without blocking the UI thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilePickerKind {
+    /// Pick a file to open.
+    Open,
+    /// Pick a Save As target path.
+    SaveAs,
+    /// Pick an export target path.
+    Export,
+    /// Pick a folder for slice export.
+    ExportSlices,
+}
+
+/// A pending async native file picker.
+pub struct PendingFilePicker {
+    kind: FilePickerKind,
+    future: std::pin::Pin<Box<dyn std::future::Future<Output = Option<rfd::FileHandle>> + Send>>,
+}
+
+impl std::fmt::Debug for PendingFilePicker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingFilePicker")
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PendingFilePicker {
+    /// Start polling `future` as a picker of `kind`.
+    pub fn new(
+        kind: FilePickerKind,
+        future: impl std::future::Future<Output = Option<rfd::FileHandle>> + Send + 'static,
+    ) -> Self {
+        Self {
+            kind,
+            future: Box::pin(future),
+        }
+    }
+
+    /// Poll once; returns `None` while the native dialog is still open.
+    pub fn poll(&mut self) -> Option<(FilePickerKind, Option<PathBuf>)> {
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        match self.future.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(handle) => {
+                Some((self.kind, handle.map(|handle| handle.path().to_path_buf())))
+            }
+            std::task::Poll::Pending => None,
+        }
+    }
+}
+
 /// Pending paste operation waiting for the user to confirm or resize.
 ///
 /// Populated when the pasted image is larger than the canvas or the document
@@ -445,6 +496,15 @@ pub struct CanvasSizeDialog {
     pub height: u32,
     /// Selected anchor point.
     pub anchor: ogre_core::CanvasAnchor,
+}
+
+/// A modal dialog for scaling the active layer by a signed percentage.
+#[derive(Debug, Clone)]
+pub struct LayerScaleDialog {
+    /// Signed percent change: `-50` halves, `100` doubles.
+    pub percent: String,
+    /// Validation feedback from the last Apply attempt.
+    pub feedback: String,
 }
 
 /// State of the "Check for Updates" background request.
@@ -565,6 +625,8 @@ pub struct AppState {
     pub color_range_dialog: Option<ColorRangeDialog>,
     /// Active canvas-size dialog, if any.
     pub canvas_size_dialog: Option<CanvasSizeDialog>,
+    /// Active layer-size dialog, if any.
+    pub layer_scale_dialog: Option<LayerScaleDialog>,
     /// Active layer-rename dialog: `(layer id, editable name buffer)`.
     pub rename_dialog: Option<(ogre_core::LayerId, String)>,
     /// Pending Remove-Background options dialog, if open. Holds the editable
@@ -575,6 +637,8 @@ pub struct AppState {
     pub remove_bg_ai: bool,
     /// Active file operation dialog, if any.
     pub file_dialog: Option<FileDialog>,
+    /// Native file picker currently running, if any.
+    pub file_picker: Option<PendingFilePicker>,
     /// Feedback message shown in the active file dialog.
     pub file_dialog_feedback: String,
     /// Transient error message from a failed command dispatch, shown briefly in
@@ -775,11 +839,13 @@ impl AppState {
             selection_dialog: None,
             color_range_dialog: None,
             canvas_size_dialog: None,
+            layer_scale_dialog: None,
             rename_dialog: None,
             remove_bg_dialog: None,
             remove_bg_ai: false,
             svg_import_dialog: None,
             file_dialog: None,
+            file_picker: None,
             file_dialog_feedback: String::new(),
             error_feedback: None,
             filter_dialog: None,

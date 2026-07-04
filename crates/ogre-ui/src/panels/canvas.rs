@@ -165,6 +165,7 @@ pub fn render_canvas(ui: &mut egui::Ui, app: &mut OgreApp) {
                 .clicked()
             {
                 crate::context_menu::apply_context_action(&mut app.state, item.action);
+                ui.close_kind(egui::UiKind::Menu);
             }
         }
     });
@@ -812,9 +813,9 @@ pub fn apply_zoom(
 /// Pan the viewport by a screen-space drag delta (physical pixels).
 ///
 /// `drag_delta` is the distance the pointer moved on screen in physical pixels.
-/// The viewport's `pan` is shifted by `drag_delta / zoom` in document pixels.
+/// The viewport's `pan` moves opposite the drag so the canvas follows the hand.
 pub fn apply_pan(viewport: &mut ogre_gpu::Viewport, drag_delta: Vec2) {
-    viewport.pan += drag_delta / viewport.zoom;
+    viewport.pan -= drag_delta / viewport.zoom;
 }
 
 /// Lazily construct the shared GPU renderer from eframe's wgpu render state.

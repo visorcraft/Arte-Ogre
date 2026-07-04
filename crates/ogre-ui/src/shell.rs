@@ -17,8 +17,8 @@ use crate::dispatch;
 use crate::io_worker::IoKind;
 use crate::panels;
 use crate::state::{
-    AppState, AppView, ColorRangeDialog, DocumentTab, FileDialog, FilterDialog, FilterKind,
-    SelectionDialog,
+    AppState, AppView, ColorRangeDialog, DocumentTab, FileDialog, FilePickerKind, FilterDialog,
+    FilterKind, LayerScaleDialog, PendingFilePicker, SelectionDialog,
 };
 use crate::tools::ToolFamily;
 use crate::OgreApp;
@@ -151,6 +151,16 @@ fn tab_label(tab: &DocumentTab) -> String {
         .unwrap_or_else(|| "Untitled".to_string())
 }
 
+fn unsaved_tab_labels(state: &AppState) -> Vec<String> {
+    state
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(_, tab)| tab.unsaved)
+        .map(|(idx, tab)| format!("{} (tab {})", tab_label(tab), idx + 1))
+        .collect()
+}
+
 /// A user-facing shortcut action handled by the shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
@@ -172,6 +182,8 @@ pub enum Shortcut {
     NewRasterLayer,
     /// Duplicate the active layer.
     DuplicateLayer,
+    /// Delete the selected pixels from the active raster layer.
+    Delete,
     /// Delete the active layer.
     DeleteLayer,
     /// Rename the active layer (opens a dialog).
@@ -223,7 +235,8 @@ impl Shortcut {
     pub fn requires_no_text_focus(self) -> bool {
         matches!(
             self,
-            Shortcut::DeleteLayer
+            Shortcut::Delete
+                | Shortcut::DeleteLayer
                 | Shortcut::RenameLayer
                 | Shortcut::DefaultColors
                 | Shortcut::SwapColors
@@ -283,11 +296,7 @@ pub fn handle_shortcut(state: &mut AppState, shortcut: Shortcut) -> bool {
     match shortcut {
         Shortcut::Undo => dispatch::undo(state).is_some(),
         Shortcut::Redo => dispatch::redo(state).is_some(),
-        Shortcut::Deselect => dispatch::dispatch(
-            state,
-            Box::new(ogre_core::SetSelectionCmd::new(ogre_core::Selection::none())),
-        )
-        .is_ok(),
+        Shortcut::Deselect => deselect_selection(state),
         Shortcut::SelectAll => {
             let canvas = state.current_tab().doc.canvas;
             dispatch::dispatch(
@@ -318,6 +327,7 @@ pub fn handle_shortcut(state: &mut AppState, shortcut: Shortcut) -> bool {
                 false
             }
         }
+        Shortcut::Delete => delete_selection_shortcut(state),
         Shortcut::DeleteLayer => {
             if let Some(id) = state.current_tab().doc.active {
                 crate::panels::layers::delete_layer(state, id);
@@ -499,6 +509,89 @@ fn fill_with(state: &mut AppState, color: ogre_core::Rgba32F) -> bool {
         Box::new(ogre_core::FillSelectionCmd::new(color, 1.0, sel)),
     );
     true
+}
+
+/// Clear the document selection and any select-tool preview state.
+pub(crate) fn deselect_selection(state: &mut AppState) -> bool {
+    state.tool_manager.cancel_active();
+    state.polygon_building = false;
+    state.left_click_menu = None;
+    state.left_click_menu_fresh = false;
+    dispatch::dispatch(
+        state,
+        Box::new(ogre_core::SetSelectionCmd::new(ogre_core::Selection::none())),
+    )
+    .is_ok()
+}
+
+fn delete_selection_shortcut(state: &mut AppState) -> bool {
+    if state.current_tab().doc.selection.is_empty() {
+        return false;
+    }
+    delete_selection_contents(state)
+}
+
+/// Delete the selected pixels from the active raster layer, then deselect.
+pub(crate) fn delete_selection_contents(state: &mut AppState) -> bool {
+    if state.is_busy() || state.current_tab().doc.selection.is_empty() {
+        return false;
+    }
+    let Some(active) = state.current_tab().doc.active else {
+        state.error_feedback = Some("Select a raster layer first".to_string());
+        return false;
+    };
+    let clear_result = {
+        let doc = &state.current_tab().doc;
+        let layer = doc
+            .layer(active)
+            .map_err(|_| "Select a raster layer first".to_string());
+        layer.and_then(|layer| {
+            if !layer.is_raster() {
+                return Err("Select a raster layer first".to_string());
+            }
+            if layer.locked {
+                return Err("Layer is locked".to_string());
+            }
+            let Some(buffer) = layer.buffer() else {
+                return Err("Select a raster layer first".to_string());
+            };
+            Ok(ogre_core::erase_selection_from_buffer(
+                buffer,
+                layer.offset,
+                &doc.selection,
+            ))
+        })
+    };
+    let cleared = match clear_result {
+        Ok(cleared) => cleared,
+        Err(msg) => {
+            state.error_feedback = Some(msg);
+            return false;
+        }
+    };
+
+    let mut batch = ogre_core::BatchCmd::new("Delete");
+    batch.push(Box::new(ogre_core::SetLayerBufferCmd::new(
+        active, cleared, "Delete",
+    )));
+    batch.push(Box::new(ogre_core::SetSelectionCmd::new(
+        ogre_core::Selection::none(),
+    )));
+
+    state.tool_manager.cancel_active();
+    state.polygon_building = false;
+    state.left_click_menu = None;
+    state.left_click_menu_fresh = false;
+    match dispatch::dispatch(state, Box::new(batch)) {
+        Ok(()) => {
+            state.error_feedback = None;
+            true
+        }
+        Err(e) => {
+            state.error_feedback = Some(e.to_string());
+            false
+        }
+    }
 }
 
 /// Commit the active tool's pending interaction.
@@ -1097,6 +1190,17 @@ pub fn menu_bar(ui: &mut egui::Ui, state: &mut AppState, _frame: &mut eframe::Fr
             if ui
                 .add_enabled(
                     has_raster && !state.is_busy(),
+                    egui::Button::new("Layer Size…"),
+                )
+                .on_hover_text("Scale the active layer by a signed percent")
+                .clicked()
+            {
+                open_layer_scale_dialog(state);
+                ui.close_kind(egui::UiKind::Menu);
+            }
+            if ui
+                .add_enabled(
+                    has_raster && !state.is_busy(),
                     egui::Button::new("Merge Down"),
                 )
                 .on_hover_text("Merge the active layer into the one below")
@@ -1374,12 +1478,89 @@ pub fn menu_bar(ui: &mut egui::Ui, state: &mut AppState, _frame: &mut eframe::Fr
 
     render_selection_dialogs(ui, state);
     render_canvas_size_dialog(ui, state);
+    render_layer_scale_dialog(ui, state);
     render_rename_dialog(ui, state);
     render_file_dialogs(ui, state);
     render_close_prompt(ui, state);
 }
 
+fn start_file_picker(state: &mut AppState, kind: FilePickerKind) {
+    if state.file_picker.is_some() {
+        state.file_dialog_feedback = "File picker is already open.".to_string();
+        return;
+    }
+    let picker = match kind {
+        FilePickerKind::Open => PendingFilePicker::new(
+            kind,
+            rfd::AsyncFileDialog::new()
+                .add_filter(
+                    "Images and documents",
+                    &[
+                        "png", "jpg", "jpeg", "webp", "tiff", "tif", "exr", "bmp", "ora", "ogre",
+                        "svg", "svgz",
+                    ],
+                )
+                .pick_file(),
+        ),
+        FilePickerKind::SaveAs => PendingFilePicker::new(
+            kind,
+            rfd::AsyncFileDialog::new()
+                .set_file_name("Untitled.ogre")
+                .save_file(),
+        ),
+        FilePickerKind::Export => {
+            PendingFilePicker::new(kind, rfd::AsyncFileDialog::new().save_file())
+        }
+        FilePickerKind::ExportSlices => {
+            PendingFilePicker::new(kind, rfd::AsyncFileDialog::new().pick_folder())
+        }
+    };
+    state.file_picker = Some(picker);
+    state.file_dialog_feedback = "Waiting for file picker…".to_string();
+}
+
+fn poll_file_picker(state: &mut AppState) {
+    let Some((kind, picked)) = state.file_picker.as_mut().and_then(PendingFilePicker::poll) else {
+        return;
+    };
+    state.file_picker = None;
+    let Some(path) = picked else {
+        state.file_dialog_feedback.clear();
+        return;
+    };
+    match kind {
+        FilePickerKind::Open => {
+            state.file_dialog = None;
+            state.file_dialog_feedback.clear();
+            crate::open_flow::open_image(state, path);
+        }
+        FilePickerKind::SaveAs => {
+            if let Some(FileDialog::SaveAs { path: slot }) = state.file_dialog.as_mut() {
+                *slot = path.to_string_lossy().to_string();
+            }
+            state.file_dialog_feedback.clear();
+        }
+        FilePickerKind::Export => {
+            if let Some(FileDialog::Export { path: slot, .. }) = state.file_dialog.as_mut() {
+                *slot = path.to_string_lossy().to_string();
+            }
+            state.file_dialog_feedback.clear();
+        }
+        FilePickerKind::ExportSlices => {
+            if let Some(FileDialog::ExportSlices { path: slot, .. }) = state.file_dialog.as_mut() {
+                *slot = path.to_string_lossy().to_string();
+            }
+            state.file_dialog_feedback.clear();
+        }
+    }
+}
+
 fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
+    poll_file_picker(state);
+    if state.file_picker.is_some() {
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
+    }
+
     let Some(mut dialog) = state.file_dialog.take() else {
         return;
     };
@@ -1456,18 +1637,9 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                             .add_sized([browse_w, row_h], egui::Button::new("Browse…"))
                             .clicked()
                         {
-                            if let Some(p) = crate::open_flow::pick_image_path() {
-                                // On Bird's Eye View, Browse opens the picked
-                                // file immediately (the modal self-closes when
-                                // the load completes). In Editor View it just
-                                // fills the field so the user can review before
-                                // clicking Open.
-                                if state.view == AppView::BirdsEye {
-                                    crate::open_flow::open_image(state, &p);
-                                } else {
-                                    *path = p.to_string_lossy().to_string();
-                                }
-                            }
+                            // Browse means "pick and open"; the picker runs
+                            // async so the editor window keeps responding.
+                            start_file_picker(state, FilePickerKind::Open);
                         }
                     });
 
@@ -1566,7 +1738,8 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                             });
                     }
 
-                    let open_enabled = !state.io_busy && !path.trim().is_empty();
+                    let open_enabled =
+                        !state.io_busy && state.file_picker.is_none() && !path.trim().is_empty();
                     modal_actions(ui, |ui| {
                         if ui
                             .add_enabled(open_enabled, accent_button("Open", palette.accent))
@@ -1581,10 +1754,8 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                     });
                 }
                 FileDialog::SaveAs { path } => {
-                    file_dialog_path_row(ui, "Path:", path, "/path/to/file.ogre", |path| {
-                        if let Some(p) = rfd::FileDialog::new().save_file() {
-                            *path = p.to_string_lossy().to_string();
-                        }
+                    file_dialog_path_row(ui, "Path:", path, "/path/to/file.ogre", |_| {
+                        start_file_picker(state, FilePickerKind::SaveAs);
                     });
                 }
                 FileDialog::Export {
@@ -1593,10 +1764,8 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                     quality,
                     bit_depth,
                 } => {
-                    file_dialog_path_row(ui, "Path:", path, "/path/to/image.png", |path| {
-                        if let Some(p) = rfd::FileDialog::new().save_file() {
-                            *path = p.to_string_lossy().to_string();
-                        }
+                    file_dialog_path_row(ui, "Path:", path, "/path/to/image.png", |_| {
+                        start_file_picker(state, FilePickerKind::Export);
                     });
                     file_dialog_combo_row(ui, "Format:", "export_format", format, &[
                         "PNG", "JPEG", "TIFF", "WebP", "EXR", "ORA", "SVG",
@@ -1617,10 +1786,8 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                     quality,
                     bit_depth,
                 } => {
-                    file_dialog_path_row(ui, "Path:", path, "/path/to/slices", |path| {
-                        if let Some(p) = rfd::FileDialog::new().pick_folder() {
-                            *path = p.to_string_lossy().to_string();
-                        }
+                    file_dialog_path_row(ui, "Path:", path, "/path/to/slices", |_| {
+                        start_file_picker(state, FilePickerKind::ExportSlices);
                     });
                     file_dialog_combo_row(ui, "Format:", "slice_export_format", format, &[
                         "PNG", "JPEG", "TIFF", "WebP", "EXR",
@@ -1638,7 +1805,7 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                 }
             }
 
-            if state.io_busy {
+            if state.io_busy || state.file_picker.is_some() {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.label(&state.file_dialog_feedback);
@@ -1650,7 +1817,10 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
             if !matches!(dialog, FileDialog::Open { .. }) {
                 modal_actions(ui, |ui| {
                     if ui
-                        .add_enabled(!state.io_busy, accent_button("OK", palette.accent))
+                        .add_enabled(
+                            !state.io_busy && state.file_picker.is_none(),
+                            accent_button("OK", palette.accent),
+                        )
                         .clicked()
                     {
                         match &dialog {
@@ -1790,6 +1960,7 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
 
     if close {
         state.file_dialog = None;
+        state.file_picker = None;
         state.file_dialog_feedback.clear();
         // Dismissing a Save As cancels any close that was waiting on it.
         state.close_after_save = false;
@@ -2081,7 +2252,14 @@ fn render_close_prompt(ui: &mut egui::Ui, state: &mut AppState) {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 state.close_prompt = false;
             }
-            ui.label("This document has unsaved changes. Save before closing?");
+            let label = format!(
+                "{} (tab {})",
+                tab_label(&state.tabs[state.active_tab]),
+                state.active_tab + 1
+            );
+            ui.label(format!(
+                "“{label}” has unsaved changes. Save before closing?"
+            ));
             modal_actions(ui, |ui| {
                 if ui.add(accent_button("Save", palette.accent)).clicked() {
                     state.close_prompt = false;
@@ -2391,13 +2569,22 @@ pub(crate) fn render_quit_prompt(ui: &mut egui::Ui, state: &mut AppState) {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             state.quit_confirm = false;
         }
-        let unsaved_count = state.tabs.iter().filter(|t| t.unsaved).count();
-        let message = if unsaved_count == 1 {
-            "You have 1 unsaved document. Exit without saving?".to_string()
+        let unsaved = unsaved_tab_labels(state);
+        let message = if unsaved.len() == 1 {
+            format!("“{}” has unsaved changes. Exit without saving?", unsaved[0])
         } else {
-            format!("You have {unsaved_count} unsaved documents. Exit without saving?")
+            format!(
+                "{} documents have unsaved changes. Exit without saving?",
+                unsaved.len()
+            )
         };
         ui.label(message);
+        if unsaved.len() > 1 {
+            ui.add_space(crate::theme::SPACE_S);
+            for label in &unsaved {
+                ui.label(format!("• {label}"));
+            }
+        }
         modal_actions(ui, |ui| {
             // Accent (safe-default) Cancel is added first so it lands on the right.
             if ui.add(accent_button("Cancel", palette.accent)).clicked() {
@@ -2601,6 +2788,14 @@ pub(crate) fn open_canvas_resize_dialog(state: &mut AppState) {
         width: state.current_tab().doc.canvas.w.max(1),
         height: state.current_tab().doc.canvas.h.max(1),
         anchor: ogre_core::CanvasAnchor::Center,
+    });
+}
+
+/// Open the Layer-Size dialog for the active raster layer.
+pub(crate) fn open_layer_scale_dialog(state: &mut AppState) {
+    state.layer_scale_dialog = Some(LayerScaleDialog {
+        percent: "0".to_string(),
+        feedback: String::new(),
     });
 }
 
@@ -2918,6 +3113,128 @@ fn render_canvas_size_dialog(ui: &mut egui::Ui, state: &mut AppState) {
     if close {
         state.canvas_size_dialog = None;
     }
+}
+
+fn render_layer_scale_dialog(ui: &mut egui::Ui, state: &mut AppState) {
+    let mut close = false;
+    let mut apply: Option<String> = None;
+    let palette = crate::theme::resolve(state.preferences.theme, ui.ctx());
+    let window = center_modal(
+        egui::Window::new("Layer Size")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false),
+        ui.ctx(),
+        state,
+    );
+
+    if let Some(LayerScaleDialog { percent, feedback }) = state.layer_scale_dialog.as_mut() {
+        window.show(ui.ctx(), |ui| {
+            ui.set_width(220.0);
+            modal_heading(ui, "Layer Size");
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
+            ui.label("Scale active layer by percent change:");
+            ui.horizontal(|ui| {
+                ui.label("Percent:");
+                ui.add_sized(
+                    [90.0, ui.spacing().interact_size.y],
+                    egui::TextEdit::singleline(percent),
+                );
+            });
+            ui.small("-50 halves the layer; 100 doubles it.");
+            if !feedback.is_empty() {
+                ui.colored_label(egui::Color32::YELLOW, feedback.as_str());
+            }
+            modal_actions(ui, |ui| {
+                if ui.add(accent_button("Apply", palette.accent)).clicked() {
+                    apply = Some(percent.clone());
+                }
+                if ui.button("Cancel").clicked() {
+                    close = true;
+                }
+            });
+        });
+    }
+
+    if let Some(percent) = apply {
+        match layer_scale_command(&state.current_tab().doc, &percent) {
+            Ok(cmd) => {
+                dispatch::dispatch_or_report(state, cmd);
+                close = true;
+            }
+            Err(msg) => {
+                if let Some(dialog) = state.layer_scale_dialog.as_mut() {
+                    dialog.feedback = msg;
+                }
+            }
+        }
+    }
+    if close {
+        state.layer_scale_dialog = None;
+    }
+}
+
+fn layer_scale_command(
+    doc: &ogre_core::Document,
+    percent: &str,
+) -> Result<Box<dyn ogre_core::Command>, String> {
+    let scale = scale_percent_to_factor(percent)?;
+    let Some(id) = doc.active else {
+        return Err("Select a raster layer first.".to_string());
+    };
+    let affine = layer_scale_affine(doc, id, scale)?;
+    Ok(Box::new(ogre_core::TransformLayerCmd::new(id, affine)))
+}
+
+fn scale_percent_to_factor(percent: &str) -> Result<f32, String> {
+    let pct: f32 = percent
+        .trim()
+        .trim_end_matches('%')
+        .trim()
+        .parse()
+        .map_err(|_| "Enter a signed percent, e.g. -50 or 100.".to_string())?;
+    if !pct.is_finite() {
+        return Err("Enter a finite percent.".to_string());
+    }
+    let scale = 1.0 + pct / 100.0;
+    if scale <= 0.0 {
+        return Err("Scale must be greater than -100%.".to_string());
+    }
+    if (scale - 1.0).abs() < f32::EPSILON {
+        return Err("Enter a non-zero percent.".to_string());
+    }
+    Ok(scale)
+}
+
+fn layer_scale_affine(
+    doc: &ogre_core::Document,
+    id: ogre_core::LayerId,
+    scale: f32,
+) -> Result<glam::Affine2, String> {
+    let layer = doc
+        .layer(id)
+        .map_err(|_| "Select a raster layer first.".to_string())?;
+    if !layer.is_raster() {
+        return Err("Select a raster layer first.".to_string());
+    }
+    if layer.locked {
+        return Err("Layer is locked.".to_string());
+    }
+    let Some(buffer) = layer.buffer() else {
+        return Err("Select a raster layer first.".to_string());
+    };
+    let Some(bounds) = buffer.exact_bounds() else {
+        return Err("Layer has no pixels to scale.".to_string());
+    };
+    let center = glam::Vec2::new(
+        bounds.x as f32 + layer.offset.x as f32 + bounds.w as f32 * 0.5,
+        bounds.y as f32 + layer.offset.y as f32 + bounds.h as f32 * 0.5,
+    );
+    Ok(glam::Affine2::from_translation(center)
+        * glam::Affine2::from_scale(glam::Vec2::splat(scale))
+        * glam::Affine2::from_translation(-center))
 }
 
 fn anchor_name(anchor: ogre_core::CanvasAnchor) -> &'static str {
@@ -4463,6 +4780,55 @@ mod tests {
     }
 
     #[test]
+    fn handle_delete_shortcut_erases_selection_without_deleting_layer() {
+        let mut state = AppState::new_document(100, 100);
+        let active = state.current_tab().doc.active.unwrap();
+        let inside = ogre_core::IVec2::new(5, 5);
+        let outside = ogre_core::IVec2::new(20, 20);
+        state
+            .current_tab_mut()
+            .doc
+            .layer_mut(active)
+            .unwrap()
+            .buffer_mut()
+            .unwrap()
+            .set_pixel(inside, ogre_core::Rgba32F::new(1.0, 0.0, 0.0, 1.0));
+        state
+            .current_tab_mut()
+            .doc
+            .layer_mut(active)
+            .unwrap()
+            .buffer_mut()
+            .unwrap()
+            .set_pixel(outside, ogre_core::Rgba32F::new(0.0, 1.0, 0.0, 1.0));
+        state.current_tab_mut().doc.selection =
+            ogre_core::Selection::rect(ogre_core::Rect::new(0, 0, 10, 10));
+
+        assert!(handle_shortcut(&mut state, Shortcut::Delete));
+
+        let doc = &state.current_tab().doc;
+        let buffer = doc.layer(active).unwrap().buffer().unwrap();
+        assert!(doc.order.contains(&active));
+        assert_eq!(buffer.get_pixel(inside), ogre_core::Rgba32F::TRANSPARENT);
+        assert_eq!(
+            buffer.get_pixel(outside),
+            ogre_core::Rgba32F::new(0.0, 1.0, 0.0, 1.0)
+        );
+        assert!(doc.selection.is_empty());
+    }
+
+    #[test]
+    fn handle_delete_shortcut_without_selection_does_not_delete_layer() {
+        let mut state = AppState::new_document(100, 100);
+        let active = state.current_tab().doc.active.unwrap();
+
+        assert!(!handle_shortcut(&mut state, Shortcut::Delete));
+
+        assert!(state.current_tab().doc.order.contains(&active));
+        assert_eq!(state.current_tab().doc.active, Some(active));
+    }
+
+    #[test]
     fn handle_shortcut_new_and_duplicate_layer() {
         let mut state = AppState::new_document(64, 64);
         let initial = state.current_tab().doc.order.len();
@@ -4695,6 +5061,37 @@ mod tests {
             }
             _ => panic!("expected a Resize dialog"),
         }
+    }
+
+    #[test]
+    fn open_layer_scale_dialog_defaults_to_zero_percent() {
+        let mut st = crate::state::AppState::new_document(640, 480);
+        super::open_layer_scale_dialog(&mut st);
+        let dialog = st.layer_scale_dialog.expect("expected a Layer Size dialog");
+        assert_eq!(dialog.percent, "0");
+        assert!(dialog.feedback.is_empty());
+    }
+
+    #[test]
+    fn scale_percent_to_factor_uses_signed_change() {
+        assert_eq!(super::scale_percent_to_factor("-50").unwrap(), 0.5);
+        assert_eq!(super::scale_percent_to_factor("100%").unwrap(), 2.0);
+        assert!(super::scale_percent_to_factor("-100").is_err());
+    }
+
+    #[test]
+    fn unsaved_tab_labels_names_dirty_tabs() {
+        let mut st = crate::state::AppState::new_document(640, 480);
+        st.tabs[0].last_save_path = Some(std::path::PathBuf::from("/tmp/clean.ogre"));
+        st.tabs
+            .push(crate::state::DocumentTab::new_blank(2, (10, 10)));
+        st.tabs[1].import_path = Some(std::path::PathBuf::from("/tmp/photo.png"));
+        st.tabs[1].unsaved = true;
+
+        assert_eq!(
+            super::unsaved_tab_labels(&st),
+            vec!["photo (tab 2)".to_string()]
+        );
     }
 
     #[test]

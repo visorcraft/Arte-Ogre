@@ -397,8 +397,9 @@ pub fn merge_down(doc: &mut Document, upper: LayerId) -> Result<LayerId> {
     };
     *doc.layer_mut(lower).unwrap() = merged;
 
+    let was_active = doc.active == Some(upper);
     doc.remove_layer(upper)?;
-    if doc.active == Some(upper) {
+    if was_active {
         doc.active = Some(lower);
     }
 

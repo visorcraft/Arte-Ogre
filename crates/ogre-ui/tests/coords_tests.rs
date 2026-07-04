@@ -63,11 +63,11 @@ fn apply_zoom_keeps_cursor_doc_fixed() {
 }
 
 #[test]
-fn apply_pan_shifts_pan_by_delta_over_zoom() {
+fn apply_pan_shifts_pan_opposite_delta_over_zoom() {
     let mut viewport = vp(Vec2::new(10.0, 20.0), 2.0);
     let delta = Vec2::new(30.0, -15.0);
     apply_pan(&mut viewport, delta);
-    let expected = Vec2::new(10.0 + 30.0 / 2.0, 20.0 + (-15.0) / 2.0);
+    let expected = Vec2::new(10.0 - 30.0 / 2.0, 20.0 - (-15.0) / 2.0);
     assert!(
         (viewport.pan - expected).length() < 1e-4,
         "pan mismatch: {:?} vs {:?}",

@@ -257,7 +257,7 @@ impl FreeTransformTool {
 
     /// Compute the document-space bounds of the source layer.
     fn source_doc_bounds(&self, doc: &ogre_core::Document) -> Option<ogre_core::Rect> {
-        let id = self.layer?;
+        let id = self.layer.or(doc.active)?;
         let layer = doc.layer(id).ok()?;
         let buffer = layer.buffer()?;
         let bounds = buffer.exact_bounds()?;
@@ -669,8 +669,20 @@ impl Tool for FreeTransformTool {
                 }
             }
             FreeTransformMode::Distort | FreeTransformMode::Perspective => {
+                let right = bounds.x + bounds.w as i32;
+                let bottom = bounds.y + bounds.h as i32;
+                let quad = if self.layer.is_some() {
+                    self.dst_quad
+                } else {
+                    [
+                        IVec2::new(bounds.x, bounds.y),
+                        IVec2::new(right, bounds.y),
+                        IVec2::new(right, bottom),
+                        IVec2::new(bounds.x, bottom),
+                    ]
+                };
                 let mut screen_corners = [Pos2::ZERO; 4];
-                for (i, c) in self.dst_quad.iter().enumerate() {
+                for (i, c) in quad.iter().enumerate() {
                     let screen = doc_to_screen_f(c.as_vec2(), viewport, pixels_per_point)
                         + Vec2::new(canvas_rect.min.x, canvas_rect.min.y);
                     screen_corners[i] = Pos2::new(screen.x, screen.y);
@@ -683,9 +695,16 @@ impl Tool for FreeTransformTool {
                 }
             }
             FreeTransformMode::Warp => {
+                let grid;
+                let warp_grid = if self.layer.is_some() {
+                    &self.warp_grid
+                } else {
+                    grid = ogre_core::resample::WarpGrid::identity(bounds, 4, 4);
+                    &grid
+                };
                 draw_warp_grid(
                     painter,
-                    &self.warp_grid,
+                    warp_grid,
                     viewport,
                     canvas_rect,
                     pixels_per_point,
@@ -1015,6 +1034,21 @@ mod tests {
     fn numeric_params_none_without_active_transform() {
         let tool = FreeTransformTool::new();
         assert!(tool.numeric_params().is_none());
+    }
+
+    #[test]
+    fn free_transform_uses_active_layer_bounds_before_drag() {
+        let mut doc = ogre_core::Document::new(100, 100);
+        let id = doc.add_raster_layer("Layer");
+        fill_red_rect(&mut doc, id, 5, 7);
+        doc.layer_mut(id).unwrap().offset = IVec2::new(10, 20);
+
+        let tool = FreeTransformTool::new();
+
+        assert_eq!(
+            tool.source_doc_bounds(&doc),
+            Some(ogre_core::Rect::new(10, 20, 5, 7))
+        );
     }
 
     fn send(

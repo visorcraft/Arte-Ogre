@@ -4,7 +4,7 @@
 //! Canvas context menu.
 //!
 //! The right-click menu on the canvas offers "Copy to New Layer",
-//! "Cut to New Layer", and "Deselect". All enabled/disabled logic is
+//! "Cut to New Layer", "Delete", and "Deselect". All enabled/disabled logic is
 //! computed from the current [`AppState`] and all actions route through the
 //! single command dispatch path.
 
@@ -29,6 +29,8 @@ pub enum ContextAction {
     CopyToNewLayer,
     /// Cut the current selection to a new raster layer.
     CutToNewLayer,
+    /// Delete the selected pixels from the active raster layer.
+    Delete,
     /// Invert the current selection within the canvas.
     SelectInverse,
     /// Clear the current selection.
@@ -37,8 +39,8 @@ pub enum ContextAction {
 
 /// Build the right-click context menu items for the current state.
 ///
-/// Copy/cut are enabled only when there is a non-empty selection and a raster
-/// layer is active; cut is additionally disabled when that layer is locked.
+/// Copy/cut/delete are enabled only when there is a non-empty selection and a
+/// raster layer is active; cut/delete are disabled when that layer is locked.
 /// Select Inverse and Deselect are enabled when a selection exists.
 pub fn context_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
     let has_selection = !state.doc().selection.is_empty();
@@ -55,6 +57,11 @@ pub fn context_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
             label: "Cut to New Layer",
             enabled: can_cut,
             action: ContextAction::CutToNewLayer,
+        },
+        ContextMenuItem {
+            label: "Delete",
+            enabled: can_cut,
+            action: ContextAction::Delete,
         },
         ContextMenuItem {
             label: "Select Inverse",
@@ -96,10 +103,10 @@ fn active_raster_layer(state: &AppState) -> Option<&ogre_core::Layer> {
 pub fn apply_context_action(state: &mut AppState, action: ContextAction) {
     match action {
         ContextAction::Deselect => {
-            let _ = dispatch::dispatch(
-                state,
-                Box::new(ogre_core::SetSelectionCmd::new(ogre_core::Selection::none())),
-            );
+            crate::shell::deselect_selection(state);
+        }
+        ContextAction::Delete => {
+            crate::shell::delete_selection_contents(state);
         }
         ContextAction::SelectInverse => {
             let _ = dispatch::dispatch(state, Box::new(ogre_core::InvertSelectionCmd::new()));
@@ -152,7 +159,8 @@ mod tests {
         let items = context_menu_items(&state);
         assert!(!items[0].enabled); // Copy
         assert!(!items[1].enabled); // Cut
-        assert!(!items[2].enabled); // Deselect
+        assert!(!items[2].enabled); // Delete
+        assert!(!items[4].enabled); // Deselect
     }
 
     #[test]
@@ -168,12 +176,13 @@ mod tests {
         .unwrap();
 
         let items = context_menu_items(&state);
-        assert_eq!(items.len(), 4);
+        assert_eq!(items.len(), 5);
         assert!(items.iter().all(|i| i.enabled));
         assert_eq!(items[0].action, ContextAction::CopyToNewLayer);
         assert_eq!(items[1].action, ContextAction::CutToNewLayer);
-        assert_eq!(items[2].action, ContextAction::SelectInverse);
-        assert_eq!(items[3].action, ContextAction::Deselect);
+        assert_eq!(items[2].action, ContextAction::Delete);
+        assert_eq!(items[3].action, ContextAction::SelectInverse);
+        assert_eq!(items[4].action, ContextAction::Deselect);
     }
 
     #[test]
@@ -228,6 +237,7 @@ mod tests {
         let items = context_menu_items(&state);
         assert!(items[0].enabled); // Copy still works on a locked layer.
         assert!(!items[1].enabled); // Cut is disabled.
+        assert!(!items[2].enabled); // Delete is disabled.
     }
 
     #[test]
@@ -294,6 +304,47 @@ mod tests {
                 .get_pixel(target),
             ogre_core::Rgba32F::new(0.2, 0.4, 0.9, 1.0)
         );
+    }
+
+    #[test]
+    fn delete_clears_selection_from_active_layer_and_deselects() {
+        let mut state = AppState::new_document(2000, 1500);
+        let active = state.doc().active.unwrap();
+        let inside = ogre_core::IVec2::new(1000, 700);
+        let outside = ogre_core::IVec2::new(980, 680);
+        state
+            .doc_mut()
+            .layer_mut(active)
+            .unwrap()
+            .buffer_mut()
+            .unwrap()
+            .set_pixel(inside, ogre_core::Rgba32F::new(0.2, 0.4, 0.9, 1.0));
+        state
+            .doc_mut()
+            .layer_mut(active)
+            .unwrap()
+            .buffer_mut()
+            .unwrap()
+            .set_pixel(outside, ogre_core::Rgba32F::new(0.8, 0.1, 0.1, 1.0));
+
+        dispatch::dispatch(
+            &mut state,
+            Box::new(ogre_core::SetSelectionCmd::new(Selection::rect(Rect::new(
+                990, 690, 40, 40,
+            )))),
+        )
+        .unwrap();
+
+        apply_context_action(&mut state, ContextAction::Delete);
+
+        let buffer = state.doc().layer(active).unwrap().buffer().unwrap();
+        assert_eq!(buffer.get_pixel(inside), ogre_core::Rgba32F::TRANSPARENT);
+        assert_eq!(
+            buffer.get_pixel(outside),
+            ogre_core::Rgba32F::new(0.8, 0.1, 0.1, 1.0)
+        );
+        assert!(state.doc().selection.is_empty());
+        assert_eq!(state.doc().active, Some(active));
     }
 
     #[test]

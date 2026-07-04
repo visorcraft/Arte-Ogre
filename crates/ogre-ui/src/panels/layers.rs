@@ -207,6 +207,27 @@ pub fn display_drop_to_z_index(
     rows_len.saturating_sub(1).saturating_sub(final_display)
 }
 
+fn can_flatten_layer(doc: &ogre_core::Document, id: LayerId) -> bool {
+    let Ok(upper) = doc.layer(id) else {
+        return false;
+    };
+    if !upper.is_raster() || upper.locked {
+        return false;
+    }
+    let Some((_, index)) = doc.sibling_index(id) else {
+        return false;
+    };
+    let Some(lower) = index
+        .checked_sub(1)
+        .and_then(|i| doc.siblings(id).and_then(|siblings| siblings.get(i)))
+        .copied()
+    else {
+        return false;
+    };
+    doc.layer(lower)
+        .is_ok_and(|layer| layer.is_raster() && !layer.locked && layer.blend == BlendMode::Normal)
+}
+
 /// Render the layers panel.
 pub fn render_layers(ui: &mut egui::Ui, state: &mut AppState) {
     let rows = layer_rows(&state.tabs[state.active_tab].doc);
@@ -337,6 +358,25 @@ pub fn render_layers(ui: &mut egui::Ui, state: &mut AppState) {
                     egui::RichText::new(&row.name)
                 };
                 let name_response = ui.selectable_label(row.active, name_label);
+                name_response.context_menu(|ui| {
+                    if ui.add_enabled(!busy, egui::Button::new("Delete")).clicked() {
+                        delete_layer(state, row.id);
+                        ui.close_kind(egui::UiKind::Menu);
+                    }
+                    let can_flatten = !busy && can_flatten_layer(state.doc(), row.id);
+                    if ui
+                        .add_enabled(can_flatten, egui::Button::new("Flatten"))
+                        .on_hover_text("Merge this layer into the one beneath it")
+                        .on_disabled_hover_text("No mergeable layer beneath it")
+                        .clicked()
+                    {
+                        let _ = dispatch::dispatch(
+                            state,
+                            Box::new(ogre_core::MergeDownCmd::new(row.id)),
+                        );
+                        ui.close_kind(egui::UiKind::Menu);
+                    }
+                });
                 if name_response.clicked() {
                     // Active layer is view-state; it does not go through history.
                     state.doc_mut().active = Some(row.id);
@@ -633,6 +673,32 @@ mod tests {
         dispatch::undo(&mut state);
         assert_eq!(state.doc().order, vec![id]);
         assert_eq!(state.doc().active, Some(id));
+    }
+
+    #[test]
+    fn delete_layer_activates_next_highest_layer() {
+        let mut state = AppState::new_document(100, 100);
+        let _bottom = state.doc().order[0];
+        let middle = state.doc_mut().add_raster_layer("Middle");
+        let top = state.doc_mut().add_raster_layer("Top");
+        state.doc_mut().active = Some(middle);
+
+        delete_layer(&mut state, middle);
+
+        assert_eq!(state.doc().active, Some(top));
+    }
+
+    #[test]
+    fn flatten_available_only_with_mergeable_layer_beneath() {
+        let mut state = AppState::new_document(100, 100);
+        let bottom = state.doc().order[0];
+        let top = state.doc_mut().add_raster_layer("Top");
+
+        assert!(!can_flatten_layer(state.doc(), bottom));
+        assert!(can_flatten_layer(state.doc(), top));
+
+        state.doc_mut().layer_mut(bottom).unwrap().locked = true;
+        assert!(!can_flatten_layer(state.doc(), top));
     }
 
     #[test]

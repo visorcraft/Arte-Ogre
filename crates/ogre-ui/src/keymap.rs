@@ -286,7 +286,7 @@ impl Keymap {
                 modifiers: Modifiers::NONE,
                 key: Key::Delete,
             },
-            Shortcut::DeleteLayer,
+            Shortcut::Delete,
         );
         defaults.insert(
             Chord {
@@ -712,6 +712,7 @@ impl Keymap {
             Shortcut::CommitActiveTool,
             Shortcut::NewRasterLayer,
             Shortcut::DuplicateLayer,
+            Shortcut::Delete,
             Shortcut::DeleteLayer,
             Shortcut::RenameLayer,
             Shortcut::ZoomIn,
@@ -747,6 +748,7 @@ fn parse_action(name: &str) -> Result<Shortcut, String> {
         "CommitActiveTool" => Ok(Shortcut::CommitActiveTool),
         "NewRasterLayer" => Ok(Shortcut::NewRasterLayer),
         "DuplicateLayer" => Ok(Shortcut::DuplicateLayer),
+        "Delete" => Ok(Shortcut::Delete),
         "DeleteLayer" => Ok(Shortcut::DeleteLayer),
         "RenameLayer" => Ok(Shortcut::RenameLayer),
         "ZoomIn" => Ok(Shortcut::ZoomIn),
@@ -814,6 +816,10 @@ mod tests {
         assert_eq!(
             keymap.action(chord(Modifiers::COMMAND, Key::J)),
             Some(Shortcut::DuplicateLayer)
+        );
+        assert_eq!(
+            keymap.action(chord(Modifiers::NONE, Key::Delete)),
+            Some(Shortcut::Delete)
         );
     }
 

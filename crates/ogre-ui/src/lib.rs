@@ -219,6 +219,7 @@ impl eframe::App for OgreApp {
             || self.state.filter_dialog.is_some()
             || self.state.selection_dialog.is_some()
             || self.state.canvas_size_dialog.is_some()
+            || self.state.layer_scale_dialog.is_some()
             || self.state.remove_bg_dialog.is_some()
             || self.state.recovery_prompt.is_some()
             || self.state.command_palette.open;

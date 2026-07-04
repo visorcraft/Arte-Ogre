@@ -768,6 +768,15 @@ impl DeleteLayerCmd {
     }
 }
 
+fn active_after_layer_delete(doc: &Document, id: LayerId) -> Option<LayerId> {
+    let (_, index) = doc.sibling_index(id)?;
+    let siblings = doc.siblings(id)?;
+    siblings
+        .get(index + 1)
+        .or_else(|| index.checked_sub(1).and_then(|i| siblings.get(i)))
+        .copied()
+}
+
 impl Command for DeleteLayerCmd {
     fn label(&self) -> &'static str {
         "Delete layer"
@@ -780,7 +789,11 @@ impl Command for DeleteLayerCmd {
             .ok_or(OgreError::LayerNotFound(self.id))?;
         self.parent = parent;
         self.index = index;
+        let next_active = active_after_layer_delete(doc, self.id);
         self.removed_ids = doc.remove_layer_soft(self.id)?;
+        if doc.active.is_none() {
+            doc.active = next_active;
+        }
         Ok(())
     }
 
@@ -2147,6 +2160,7 @@ impl Command for MergeDownCmd {
     }
 
     fn apply(&mut self, doc: &mut Document) -> Result<()> {
+        self.prior_active = doc.active;
         let upper_layer = doc.layer(self.upper)?;
         if !upper_layer.is_raster() {
             return Err(OgreError::NotRaster);
@@ -2185,8 +2199,9 @@ impl Command for MergeDownCmd {
         *doc.layer_mut(lower).unwrap() = merged;
 
         // Soft-remove the upper so undo can restore it with its id intact.
+        let was_active = doc.active == Some(self.upper);
         let removed_ids = doc.remove_layer_soft(self.upper)?;
-        if doc.active == Some(self.upper) {
+        if was_active {
             doc.active = Some(lower);
         }
 
@@ -2195,7 +2210,6 @@ impl Command for MergeDownCmd {
         self.upper_parent = parent;
         self.upper_index = upper_index;
         self.removed_ids = removed_ids;
-        self.prior_active = doc.active;
         Ok(())
     }
 
@@ -3311,6 +3325,31 @@ mod tests {
     }
 
     #[test]
+    fn delete_layer_cmd_activates_layer_above_or_below() {
+        let mut doc = Document::new(100, 100);
+        let bottom = doc.add_raster_layer("Bottom");
+        let middle = doc.add_raster_layer("Middle");
+        let top = doc.add_raster_layer("Top");
+
+        let mut history = History::new(0);
+        doc.active = Some(middle);
+        history
+            .do_command(&mut doc, Box::new(DeleteLayerCmd::new(middle)))
+            .unwrap();
+        assert_eq!(doc.active, Some(top));
+
+        history.undo(&mut doc);
+        assert_eq!(doc.active, Some(middle));
+
+        doc.active = Some(top);
+        history
+            .do_command(&mut doc, Box::new(DeleteLayerCmd::new(top)))
+            .unwrap();
+        assert_eq!(doc.active, Some(middle));
+        assert_eq!(doc.order, vec![bottom, middle]);
+    }
+
+    #[test]
     fn delete_after_paint_undoes_with_stable_id() {
         let mut doc = Document::new(100, 100);
         let a = doc.add_raster_layer("A");
@@ -4298,9 +4337,11 @@ mod tests {
             .unwrap()
             .get_pixel(IVec2::new(2, 2));
         assert_eq!(merged_pixel, Rgba32F::new(0.0, 1.0, 0.0, 1.0));
+        assert_eq!(doc.active, Some(lower));
 
         // Undo restores both layers exactly (content + tree order).
         history.undo(&mut doc);
+        assert_eq!(doc.active, Some(upper));
         assert_eq!(doc.layer(lower).unwrap(), &lower_before);
         assert_eq!(doc.layer(upper).unwrap(), &upper_before);
         assert_eq!(doc.order, order_before);
