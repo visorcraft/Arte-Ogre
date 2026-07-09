@@ -57,7 +57,7 @@ A peer code review ends each significant change.
 
 ## Before you push: the quality gate
 
-Every change must pass the per-crate gate — **warnings are hard errors**:
+Every change must pass the per-crate gate - **warnings are hard errors**:
 
 ```sh
 cargo test   -p <crate>
@@ -71,7 +71,7 @@ is `#![deny(unsafe_code)]`. Proptest suites run with `PROPTEST_CASES=1024`;
 release-only perf/golden tests are `#[ignore]`'d and run with `--release
 --ignored`.
 
-`Cargo.lock` is tracked — Arte Ogre ships a binary app — so commit lockfile
+`Cargo.lock` is tracked - Arte Ogre ships a binary app - so commit lockfile
 changes alongside the dependency change that caused them. After a dependency
 change, regenerate the license docs with `scripts/licenses.sh` (needs
 `cargo-about`).
@@ -86,17 +86,17 @@ ogre-core ─► ogre-gpu ─► ogre-ui ─► ogre (binary)
    └── ogre-io ─┴─ ogre-plugins ─┘   ogre-vector ─► ogre-core
 ```
 
-- **`ogre-core`** — headless engine and **ground truth**: tiled buffers,
+- **`ogre-core`** - headless engine and **ground truth**: tiled buffers,
   layers/documents, selection, history, commands, ops, the CPU reference
   compositor.
-- **`ogre-gpu`** — interactive `wgpu` compositor; recomposites only dirty
+- **`ogre-gpu`** - interactive `wgpu` compositor; recomposites only dirty
   tiles per edit.
-- **`ogre-ui`** — the `eframe`/`egui_dock` app shell, tools, and panels.
-- **`ogre`** — the thin binary.
-- **`ogre-io`** — file formats: native `.ogre`, `.ora`, PSD/EXR/TIFF/PNG/
+- **`ogre-ui`** - the `eframe`/`egui_dock` app shell, tools, and panels.
+- **`ogre`** - the thin binary.
+- **`ogre-io`** - file formats: native `.ogre`, `.ora`, PSD/EXR/TIFF/PNG/
   JPEG/WebP, ICC color.
-- **`ogre-plugins`** — sandboxed WASM (`wasmtime`) and Lua (`mlua`) filters.
-- **`ogre-vector`** — vector path rasterization.
+- **`ogre-plugins`** - sandboxed WASM (`wasmtime`) and Lua (`mlua`) filters.
+- **`ogre-vector`** - vector path rasterization.
 
 ## Engine invariants (violating these = silent correctness bugs)
 
@@ -106,7 +106,7 @@ ogre-core ─► ogre-gpu ─► ogre-ui ─► ogre (binary)
 - **GPU is golden-tested against CPU.** Every GPU compositor output must
   match `ogre_core::composite_document` within `1e-4` per channel. The CPU
   compositor is ground truth.
-- **Pixel format.** `Rgba32F` — straight (non-premultiplied) alpha, **linear**
+- **Pixel format.** `Rgba32F` - straight (non-premultiplied) alpha, **linear**
   light, origin top-left, +y down.
 - **Tile space.** Tiles are 256×256, stored in layer-local space
   (`doc_coord = local_coord + layer.offset`). Tile math uses **floored**
@@ -114,7 +114,7 @@ ogre-core ─► ogre-gpu ─► ogre-ui ─► ogre (binary)
 - **Killer feature.** The exact-position Cut/Copy-to-New-Layer guarantee is
   pinned by byte-identical round-trip tests; keep them green.
 - **Untrusted input is validated.** File loaders and plugins parse untrusted
-  data — bound allocations and reject malformed manifests rather than
+  data - bound allocations and reject malformed manifests rather than
   trusting on-disk sizes.
 
 ## Coding standards
@@ -128,7 +128,7 @@ ogre-core ─► ogre-gpu ─► ogre-ui ─► ogre (binary)
 ## Attribution
 
 Commits are authored solely by the human committer. **Never** add an AI or
-agent as a contributor anywhere — no `Co-Authored-By` trailers, no
+agent as a contributor anywhere - no `Co-Authored-By` trailers, no
 "Generated with…" lines, and no mention of any AI assistant in commit
 messages, PR descriptions, code, comments, or docs.
 

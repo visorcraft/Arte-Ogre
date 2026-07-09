@@ -7,7 +7,7 @@
 <p align="center">
   <b>A Rust-native, GPU-accelerated layered image editor.</b>
   <br />
-  Paint, composite, select, and cut out — with <b>layers done right</b>.
+  Paint, composite, select, and cut out - with <b>layers done right</b>.
   <br />
   Fast Rust core · egui + wgpu GPU canvas · sparse tiled copy-on-write engine · no telemetry · GPL-3.0-only.
 </p>
@@ -21,11 +21,11 @@
 </p>
 
 <p align="center">
-  <img src="assets/editor_example.png" alt="Arte Ogre editor — layered canvas with the tools sidebar, layers panel, and an active selection" width="820" />
+  <img src="assets/editor_example.png" alt="Arte Ogre editor - layered canvas with the tools sidebar, layers panel, and an active selection" width="820" />
 </p>
 
 <p align="center">
-  <img src="assets/birds_eye_example.png" alt="Arte Ogre Bird's Eye View — all open documents as thumbnail cards for cross-document layer moves" width="820" />
+  <img src="assets/birds_eye_example.png" alt="Arte Ogre Bird's Eye View - all open documents as thumbnail cards for cross-document layer moves" width="820" />
 </p>
 
 ---
@@ -35,14 +35,14 @@
 Arte Ogre is a desktop image editor built around one promise most editors break:
 **layers keep their exact position.** Rectangle-select a region, right-click,
 and **Cut/Copy to New Layer** drops the content onto a fresh layer at its *exact*
-original canvas coordinate — pixel for pixel. That guarantee falls out of the
+original canvas coordinate - pixel for pixel. That guarantee falls out of the
 data model (sparse tiled copy-on-write buffers), not UI bookkeeping.
 
 It is built around three goals:
 
 - **GPU-native.** The whole document composites on the GPU through `wgpu`,
   sharing the same device as the UI for a zero-copy canvas, and recomposites
-  only the **dirty tiles** per edit — so a deep layer stack stays interactive.
+  only the **dirty tiles** per edit - so a deep layer stack stays interactive.
 - **Correct by construction.** 32-bit float RGBA, straight alpha, **linear
   light**. Every GPU result is golden-tested against a CPU reference compositor
   within `1e-4` per channel; the killer cut/copy feature is pinned by a
@@ -53,31 +53,31 @@ It is built around three goals:
 
 ### What it does today
 
-- **Layers** — raster, groups, blend modes, opacity, non-destructive ordering;
+- **Layers** - raster, groups, blend modes, opacity, non-destructive ordering;
   cheap duplicate and undo via copy-on-write tiles.
-- **Bird's Eye View** — a full-workspace layer organizer: view every open
+- **Bird's Eye View** - a full-workspace layer organizer: view every open
   document as a card, reorder root layers by dragging thumbnails, move or copy
   layers between documents, and double-click a thumbnail to jump back to the
   editor with that layer active.
-- **Selection** — Rectangle, Ellipse, Polygon Lasso (live), Freehand Lasso, and
+- **Selection** - Rectangle, Ellipse, Polygon Lasso (live), Freehand Lasso, and
   a perceptual Magic Wand, all with real marching-ants outlines, Select Inverse,
   and Copy/Cut to a new layer or the clipboard.
-- **Paint** — brush, pencil, eraser (pressure-aware), paint bucket, eyedropper,
+- **Paint** - brush, pencil, eraser (pressure-aware), paint bucket, eyedropper,
   tiled brush/stroke rasterization, and brush-engine tools for clone/heal,
   blur/sharpen/smudge, dodge/burn/sponge, and color replacement.
-- **Vector** — Shape, Pen, and Type create **non-destructive, re-editable vector
+- **Vector** - Shape, Pen, and Type create **non-destructive, re-editable vector
   layers** (a per-tool Vector/Pixels toggle); select a vector layer to load it
   back into the tool and edit in place.
-- **Transform** — move, free transform (scale/rotate/skew), crop.
-- **Remove Background** — lift a solid or checkerboard "fake transparency" matte
-  to true alpha, losslessly, with edge defringe — plus an optional AI matte
+- **Transform** - move, free transform (scale/rotate/skew), crop.
+- **Remove Background** - lift a solid or checkerboard "fake transparency" matte
+  to true alpha, losslessly, with edge defringe - plus an optional AI matte
   refine (IS-Net via pure-Rust ONNX) for fine hair.
-- **Filters & color** — GPU compute filters with a CPU fallback; ICC color via
+- **Filters & color** - GPU compute filters with a CPU fallback; ICC color via
   `lcms2`.
-- **Files** — native `.ogre` (zstd tiles + msgpack), `.ora` interchange,
+- **Files** - native `.ogre` (zstd tiles + msgpack), `.ora` interchange,
   PSD / EXR / TIFF / PNG / JPEG / WebP via the `image` crate, and SVG
   import/export (raster, vector, or hybrid) via `resvg`/`usvg`.
-- **Extensible** — sandboxed tile filters via `wasmtime` (stable WIT contract,
+- **Extensible** - sandboxed tile filters via `wasmtime` (stable WIT contract,
   fuel- and memory-bounded) and `mlua` Lua scripting.
 
 ---
@@ -162,7 +162,7 @@ NO_STRIP=1 linuxdeploy --appdir AppDir \
 install -Dm755 Arte_Ogre-x86_64.AppImage ~/.local/bin/arte-ogre
 ```
 
-> **Wayland title-bar icon.** Wayland has no per-window icon protocol — the
+> **Wayland title-bar icon.** Wayland has no per-window icon protocol - the
 > compositor takes the icon from a desktop entry matching the window's `app_id`
 > (`arte-ogre`). Install the same `.desktop` + icon into your data dir so it
 > resolves: copy `arte-ogre.desktop` to `~/.local/share/applications/` and the
@@ -171,7 +171,7 @@ install -Dm755 Arte_Ogre-x86_64.AppImage ~/.local/bin/arte-ogre
 After install, launch with `arte-ogre [image.png …]`.
 
 > **Linux backend.** Defaults to winit's native backend (Wayland on a Wayland
-> session — smooth resize). Set `ARTE_OGRE_X11=1` to force X11/XWayland, the
+> session - smooth resize). Set `ARTE_OGRE_X11=1` to force X11/XWayland, the
 > only backend with file drag-and-drop. `File → Open` works on both.
 
 ---
@@ -204,12 +204,12 @@ Patches, bug reports, and design feedback are welcome. See
 and the engine invariants every change must respect.
 
 - Fork on GitHub, branch from `master`, send a PR.
-- Run the per-crate quality gate before pushing — it must pass with zero
+- Run the per-crate quality gate before pushing - it must pass with zero
   warnings.
 - Arte Ogre is GPL-3.0-only. Development follows a TDD, checkbox-driven flow
   (write test → verify fail → implement → verify pass).
 
-Found a vulnerability? Please follow the **[security policy](SECURITY.md)** —
+Found a vulnerability? Please follow the **[security policy](SECURITY.md)** -
 don't open a public issue.
 
 ---

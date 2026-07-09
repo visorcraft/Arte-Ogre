@@ -114,8 +114,8 @@ This file was generated automatically from `Cargo.lock` on 2026-06-27 using [`ca
 | cpp_demangle | 0.4.5 | MIT OR Apache-2.0 | [https://github.com/gimli-rs/cpp_demangle](https://github.com/gimli-rs/cpp_demangle) |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | [https://github.com/RustCrypto/utils](https://github.com/RustCrypto/utils) |
 | cpufeatures | 0.3.0 | MIT OR Apache-2.0 | [https://github.com/RustCrypto/utils](https://github.com/RustCrypto/utils) |
-| cranelift-assembler-x64 | 0.133.1 | Apache-2.0 WITH LLVM-exception | — |
-| cranelift-assembler-x64-meta | 0.133.1 | Apache-2.0 WITH LLVM-exception | — |
+| cranelift-assembler-x64 | 0.133.1 | Apache-2.0 WITH LLVM-exception | - |
+| cranelift-assembler-x64-meta | 0.133.1 | Apache-2.0 WITH LLVM-exception | - |
 | cranelift-bforest | 0.133.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
 | cranelift-bitset | 0.133.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
 | cranelift-codegen | 0.133.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
@@ -607,7 +607,7 @@ This file was generated automatically from `Cargo.lock` on 2026-06-27 using [`ca
 | wasmtime-internal-cache | 46.0.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
 | wasmtime-internal-component-macro | 46.0.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
 | wasmtime-internal-component-util | 46.0.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
-| wasmtime-internal-core | 46.0.1 | Apache-2.0 WITH LLVM-exception | — |
+| wasmtime-internal-core | 46.0.1 | Apache-2.0 WITH LLVM-exception | - |
 | wasmtime-internal-cranelift | 46.0.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
 | wasmtime-internal-fiber | 46.0.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
 | wasmtime-internal-jit-debug | 46.0.1 | Apache-2.0 WITH LLVM-exception | [https://github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) |
@@ -723,7 +723,7 @@ This file was generated automatically from `Cargo.lock` on 2026-06-27 using [`ca
 | zstd-safe | 7.2.4 | MIT OR Apache-2.0 | [https://github.com/gyscos/zstd-rs](https://github.com/gyscos/zstd-rs) |
 | zstd-sys | 2.0.16+zstd.1.5.7 | MIT OR Apache-2.0 | [https://github.com/gyscos/zstd-rs](https://github.com/gyscos/zstd-rs) |
 | zune-core | 0.5.1 | MIT OR Apache-2.0 OR Zlib | [https://github.com/etemesi254/zune-image](https://github.com/etemesi254/zune-image) |
-| zune-inflate | 0.2.54 | MIT OR Apache-2.0 OR Zlib | — |
+| zune-inflate | 0.2.54 | MIT OR Apache-2.0 OR Zlib | - |
 | zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib | [https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg](https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg) |
 | zvariant | 5.12.0 | MIT | [https://github.com/z-galaxy/zbus/](https://github.com/z-galaxy/zbus/) |
 | zvariant_derive | 5.12.0 | MIT | [https://github.com/z-galaxy/zbus/](https://github.com/z-galaxy/zbus/) |

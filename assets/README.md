@@ -3,14 +3,14 @@
 
 # assets/
 
-Brand imagery for Arte Ogre. `ArteOgre.png` is the canonical master — every
+Brand imagery for Arte Ogre. `ArteOgre.png` is the canonical master - every
 other icon reproduction (the window/taskbar icon embedded in the `ogre` binary,
 the in-app brand spots, the AppImage/desktop icon, the social card) derives
 from it.
 
 | File | Size | Purpose |
 | ---- | ---- | ------- |
-| `ArteOgre.png` | 1024×1024 | **Master raster** — the Ogre Face, transparent, cropped square + centered. Source of truth for every icon. |
+| `ArteOgre.png` | 1024×1024 | **Master raster** - the Ogre Face, transparent, cropped square + centered. Source of truth for every icon. |
 | `ArteOgre.ico` | 16/32/48/64/128/256 | Multi-resolution icon for GitHub repo display, Windows, and `.ico` consumers (favicons, etc.). |
 | `ArteOgre.svg` | scalable | Scalable wrapper that embeds the master at 512px (the subject is a raster, so this is not a hand-drawn vector). |
 | `social-card.svg` | 1024×512 | Source-of-truth vector for the GitHub banner: dark field, the Ogre Face, wordmark, tagline, and footer. |
@@ -20,7 +20,7 @@ from it.
 ## How the master was made
 
 `ArteOgre.png` is `ogre_face.png` run through Arte Ogre's own **Remove
-Background** (tolerance 0.20, edge cleanup 0.55 — the shipped defaults), then
+Background** (tolerance 0.20, edge cleanup 0.55 - the shipped defaults), then
 trimmed to the subject and centered in a square with ~8% padding. The window /
 taskbar / title-bar icon is `ArteOgre.png` embedded in the `ogre` binary via
 `eframe`'s `with_icon`; the welcome screen, tools sidebar, and About dialog

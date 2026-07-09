@@ -1,8 +1,8 @@
 # Security Policy
 
 Arte Ogre is an offline, no-telemetry desktop image editor. It still parses
-untrusted input — image files, native `.ogre`/`.ora` documents, and sandboxed
-WASM/Lua plugins — so we take security reports seriously.
+untrusted input - image files, native `.ogre`/`.ora` documents, and sandboxed
+WASM/Lua plugins - so we take security reports seriously.
 
 ## Supported versions
 
@@ -39,12 +39,12 @@ public disclosure; we're happy to credit you in the release notes.
 
 In scope:
 
-- **File loaders** (`ogre-io`) — `.ogre`, `.ora`, PSD, EXR, TIFF, PNG, JPEG,
+- **File loaders** (`ogre-io`) - `.ogre`, `.ora`, PSD, EXR, TIFF, PNG, JPEG,
   WebP. Maliciously crafted files that cause crashes, unbounded memory or CPU
   use, or memory-safety issues.
-- **Plugin sandbox** (`ogre-plugins`) — escapes from the `wasmtime` fuel/memory
+- **Plugin sandbox** (`ogre-plugins`) - escapes from the `wasmtime` fuel/memory
   caps or the Lua sandbox.
-- **The engine** (`ogre-core`, `ogre-gpu`) — memory-safety or correctness bugs
+- **The engine** (`ogre-core`, `ogre-gpu`) - memory-safety or correctness bugs
   reachable from untrusted input.
 
 Out of scope:
