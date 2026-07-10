@@ -6,6 +6,8 @@
 //! Renders a window listing discovered plugins and lets the user enable/disable
 //! them or run Lua/WASM plugins against the active document.
 
+use std::time::Instant;
+
 use crate::plugin_worker::PluginRequest;
 use crate::shell::active_raster_layer_id;
 use crate::state::AppState;
@@ -102,6 +104,7 @@ fn run_plugin(state: &mut AppState, plugin: &PluginInfo) -> Result<(), String> {
                 doc: state.doc().clone(),
             });
             state.plugin_busy = true;
+            state.plugin_started_at = Some(Instant::now());
             Ok(())
         }
         PluginKind::Wasm => {
@@ -116,6 +119,7 @@ fn run_plugin(state: &mut AppState, plugin: &PluginInfo) -> Result<(), String> {
                 doc: state.doc().clone(),
             });
             state.plugin_busy = true;
+            state.plugin_started_at = Some(Instant::now());
             Ok(())
         }
     }

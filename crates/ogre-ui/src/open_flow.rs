@@ -87,6 +87,10 @@ pub fn open_image_with_options(
         *state.current_tab_mut() = DocumentTab::new_blank(id, state.preferences.default_canvas);
         id
     } else {
+        if let Err(msg) = state.try_make_room_for_tab() {
+            state.file_dialog_feedback = msg;
+            return;
+        }
         let id = state.new_tab_id();
         state
             .tabs

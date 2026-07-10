@@ -11,7 +11,7 @@ use egui_dock::DockState;
 use glam::Vec2;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::io_worker::{IoKind, IoResult, IoWorker};
 use crate::keymap::Keymap;
@@ -118,6 +118,18 @@ pub struct BirdsEyeDropTarget {
 /// tile snapshots and full layer copies in memory. `ogre_core::History` uses `0`
 /// to mean unlimited; the UI therefore supplies a concrete default.
 pub const DEFAULT_UNDO_LIMIT: usize = 100;
+/// Maximum number of tabs open at once. Each tab holds a `Document` plus a
+/// 100-entry `History` plus a viewport and full GPU-cached tiles; without a
+/// cap, power users opening many files (or repeatedly duplicating) can drag
+/// the editor to a crawl well before the OS page-cache notices. 12 is a soft
+/// cap that still fits a side-by-side workflow without bloating memory.
+pub const MAX_OPEN_TABS: usize = 12;
+/// Upper bound on a single plugin run before the UI gives up waiting. Lua
+/// scripts are bounded by an instruction limit and WASM by a fuel cap, so this
+/// only triggers on a plugin that wedges in host-side code; the worker thread
+/// is left to finish on its own and any late result is filtered by
+/// `plugin_expected_id`.
+pub const PLUGIN_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A modal dialog asking the user for a selection-refinement parameter.
 #[derive(Debug, Clone)]
@@ -760,6 +772,10 @@ pub struct AppState {
     /// ID of the most recently enqueued plugin request. Results with a different
     /// ID are stale and are ignored.
     pub plugin_expected_id: Option<u64>,
+    /// Moment the most recent plugin request was enqueued. Used to time out a
+    /// hung plugin that the worker thread never returns from, so the UI stays
+    /// usable instead of wedging behind `is_busy() == true` forever.
+    pub plugin_started_at: Option<Instant>,
     /// Transient state for the Ctrl+Shift+P command palette overlay.
     pub command_palette: crate::command_palette::CommandPalette,
     /// Pending clipboard paste awaiting user confirmation or resize.
@@ -897,6 +913,7 @@ impl AppState {
             plugin_worker: PluginWorker::new(),
             plugin_busy: false,
             plugin_expected_id: None,
+            plugin_started_at: None,
             command_palette: crate::command_palette::CommandPalette::default(),
             paste_prompt: None,
             recovery_prompt: None,
@@ -1063,6 +1080,10 @@ impl AppState {
             self.drop_birdseye_tab_cache(id);
             *self.current_tab_mut() = DocumentTab::new_blank(id, size);
         } else {
+            if let Err(msg) = self.try_make_room_for_tab() {
+                self.file_dialog_feedback = msg;
+                return;
+            }
             let id = self.new_tab_id();
             self.tabs.push(DocumentTab::new_blank(id, size));
             self.active_tab = self.tabs.len() - 1;
@@ -1084,6 +1105,7 @@ impl AppState {
         self.bg_removal_started = None;
         self.bg_removal_ai = false;
         self.update_check = UpdateCheck::Idle;
+        self.cancel_inflight_plugin();
     }
 
     /// Duplicate the current document into a new tab: clones the `Document`,
@@ -1091,6 +1113,10 @@ impl AppState {
     /// is untitled and cannot overwrite the source. The original tab is
     /// unaffected.
     pub fn duplicate_current_tab(&mut self) {
+        if let Err(msg) = self.try_make_room_for_tab() {
+            self.file_dialog_feedback = msg;
+            return;
+        }
         let id = self.new_tab_id();
         let doc = self.current_tab().doc.clone();
         let viewport = self.current_tab().viewport;
@@ -1109,6 +1135,7 @@ impl AppState {
         self.view = AppView::Editor;
         self.dirty = true;
         self.renderer_needs_clear = true;
+        self.cancel_inflight_plugin();
     }
 
     /// Close the current document and return to the welcome screen, discarding
@@ -1136,6 +1163,7 @@ impl AppState {
         self.renderer_needs_clear = true;
         self.file_dialog = None;
         self.file_dialog_feedback.clear();
+        self.cancel_inflight_plugin();
     }
 
     /// Whether any background operation is in flight (plugin, I/O, or
@@ -1143,6 +1171,44 @@ impl AppState {
     /// redo, and busy-sensitive menu items.
     pub fn is_busy(&self) -> bool {
         self.plugin_busy || self.io_busy || self.bg_removal_rx.is_some()
+    }
+
+    /// Make room for one more tab if at [`MAX_OPEN_TABS`]; returns `Err` with a
+    /// user-facing message when every existing tab is unsaved and there is
+    /// nothing safe to evict.
+    pub(crate) fn try_make_room_for_tab(&mut self) -> Result<(), String> {
+        if self.tabs.len() < MAX_OPEN_TABS {
+            return Ok(());
+        }
+        let candidate =
+            (0..self.tabs.len()).find(|&i| i != self.active_tab && !self.tabs[i].unsaved);
+        match candidate {
+            Some(i) => {
+                let removed_id = self.tabs.remove(i).id;
+                self.drop_birdseye_tab_cache(removed_id);
+                if self.active_tab > i || self.active_tab >= self.tabs.len() {
+                    self.active_tab = self.tabs.len().saturating_sub(1);
+                }
+                Ok(())
+            }
+            None => Err(format!(
+                "Tab limit ({}) reached; close another tab first.",
+                MAX_OPEN_TABS
+            )),
+        }
+    }
+
+    /// Cancel any in-flight plugin request and reset the busy flag silently.
+    ///
+    /// Called whenever the document is replaced (close, new, duplicate, recover):
+    /// the running plugin's result would be filtered by `apply_plugin_result`
+    /// anyway because the request id no longer matches, but leaving `plugin_busy`
+    /// set lets `check_worker_health`'s timeout branch mislabel the abandoned
+    /// request as "timed out" up to `PLUGIN_TIMEOUT` later. Free the slot now.
+    fn cancel_inflight_plugin(&mut self) {
+        self.plugin_busy = false;
+        self.plugin_expected_id = None;
+        self.plugin_started_at = None;
     }
 
     /// Discard any in-flight background-removal job so its result is dropped.
@@ -1171,8 +1237,29 @@ impl AppState {
         if !self.plugin_worker.is_alive() && self.plugin_busy {
             self.plugin_busy = false;
             self.plugin_expected_id = None;
+            self.plugin_started_at = None;
             self.plugin_manager_feedback =
                 "Plugin worker stopped unexpectedly; plugin actions are unavailable.".to_string();
+            return;
+        }
+        // Hang guard: a native plugin that blocks in host code (not bounded by
+        // the Lua instruction limit or the WASM fuel cap) would otherwise leave
+        // `plugin_busy = true` forever and freeze the UI. The worker thread
+        // itself is left to terminate naturally — we only stop trusting its
+        // result and let the user queue another request.
+        if self.plugin_busy
+            && self
+                .plugin_started_at
+                .map(|t| t.elapsed() > PLUGIN_TIMEOUT)
+                .unwrap_or(false)
+        {
+            self.plugin_busy = false;
+            self.plugin_expected_id = None;
+            self.plugin_started_at = None;
+            self.plugin_manager_feedback = format!(
+                "Plugin timed out after {} s; the worker was abandoned.",
+                PLUGIN_TIMEOUT.as_secs()
+            );
         }
     }
 
@@ -1218,6 +1305,7 @@ impl AppState {
         }
         self.plugin_busy = false;
         self.plugin_expected_id = None;
+        self.plugin_started_at = None;
 
         match result {
             PluginResult::OkCommand { label, command, .. } => {
@@ -1678,6 +1766,62 @@ mod tests {
     }
 
     #[test]
+    fn cancel_inflight_plugin_resets_silently() {
+        let mut st = AppState::new_document(64, 64);
+        st.plugin_busy = true;
+        st.plugin_expected_id = Some(11);
+        st.plugin_started_at = Some(Instant::now());
+        st.plugin_manager_feedback = "should be cleared by caller later".to_string();
+
+        st.cancel_inflight_plugin();
+
+        assert!(!st.plugin_busy);
+        assert!(st.plugin_expected_id.is_none());
+        assert!(st.plugin_started_at.is_none());
+        // cancel_inflight_plugin must NOT touch feedback — the caller decides
+        // whether the user should see a message about an abandoned request.
+        assert_eq!(
+            st.plugin_manager_feedback, "should be cleared by caller later",
+            "cancel_inflight_plugin must not write feedback"
+        );
+    }
+
+    #[test]
+    fn hung_plugin_times_out_via_health_check() {
+        let mut st = AppState::new_document(64, 64);
+        st.plugin_busy = true;
+        st.plugin_expected_id = Some(7);
+        // Pretend the request started PLUGIN_TIMEOUT + 1s ago — a hung worker
+        // must be detected without spinning on actual wall-clock time.
+        st.plugin_started_at = Some(Instant::now() - PLUGIN_TIMEOUT - Duration::from_secs(1));
+
+        st.check_worker_health();
+
+        assert!(!st.plugin_busy, "stale plugin busy flag was left set");
+        assert!(st.plugin_expected_id.is_none());
+        assert!(st.plugin_started_at.is_none());
+        assert!(
+            st.plugin_manager_feedback.contains("timed out"),
+            "expected timeout feedback, got: {:?}",
+            st.plugin_manager_feedback
+        );
+    }
+
+    #[test]
+    fn fresh_plugin_not_timed_out() {
+        let mut st = AppState::new_document(64, 64);
+        st.plugin_busy = true;
+        st.plugin_expected_id = Some(9);
+        st.plugin_started_at = Some(Instant::now());
+
+        st.check_worker_health();
+
+        assert!(st.plugin_busy, "busy flag was prematurely cleared");
+        assert!(st.plugin_expected_id.is_some());
+        assert!(st.plugin_started_at.is_some());
+    }
+
+    #[test]
     fn add_as_layer_ok_adds_imported_image_as_layer() {
         let mut st = AppState::new_document(64, 64);
         st.welcome = false;
@@ -1745,5 +1889,54 @@ mod tests {
             history: ogre_core::History::new(DEFAULT_UNDO_LIMIT),
         });
         assert!(st.renderer_needs_clear);
+    }
+
+    fn pad_tabs(st: &mut AppState, count: usize) {
+        // Push blank-ish tabs directly without going through `new_blank_document`
+        // (which has reuse logic). Each tab is treated as saved so they are
+        // eligible for eviction.
+        while st.tabs.len() < count {
+            let id = st.new_tab_id();
+            st.tabs.push(DocumentTab::new_blank(id, (32, 32)));
+        }
+        st.active_tab = 0;
+    }
+
+    #[test]
+    fn try_make_room_evicts_oldest_non_dirty_tab() {
+        let mut st = AppState::new_document(64, 64);
+        pad_tabs(&mut st, MAX_OPEN_TABS);
+        assert_eq!(st.tabs.len(), MAX_OPEN_TABS);
+
+        // Snapshot the id at index 1 — it is the oldest non-active tab and the
+        // one the eviction policy should pick.
+        let evicted_id = st.tabs[1].id;
+
+        // Make the active tab "dirty" so the cap helper MUST NOT pick it.
+        st.tabs[0].unsaved = true;
+
+        st.try_make_room_for_tab()
+            .expect("room should be available");
+        assert_eq!(st.tabs.len(), MAX_OPEN_TABS - 1);
+        let ids: Vec<u64> = st.tabs.iter().map(|t| t.id).collect();
+        assert!(
+            !ids.contains(&evicted_id),
+            "oldest non-dirty tab should be evicted; remaining = {:?}",
+            ids
+        );
+    }
+
+    #[test]
+    fn try_make_room_returns_err_when_all_tabs_dirty() {
+        let mut st = AppState::new_document(64, 64);
+        pad_tabs(&mut st, MAX_OPEN_TABS);
+        // Active tab is dirty, all others dirty — nothing safe to evict.
+        for t in &mut st.tabs {
+            t.unsaved = true;
+        }
+        let result = st.try_make_room_for_tab();
+        assert!(result.is_err());
+        assert_eq!(st.tabs.len(), MAX_OPEN_TABS, "no eviction happens");
+        assert!(st.file_dialog_feedback.is_empty()); // caller decides where to surface
     }
 }

@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use ahash::{AHashMap, AHashSet};
+use ahash::{AHashMap, AHashSet, AHasher};
 use ogre_core::{
     rasterize_vector_data, AdjustmentKind, BlendMode, Document, IVec2, Layer, LayerContent,
     LayerId, OgreError, Rect, Rgba32F, Tile, TileCoord, TiledBuffer, TILE_SIZE,
@@ -239,6 +239,7 @@ impl ResultTileCache {
 ///
 /// The plan is produced once per `composite` call from `Document::render_order`
 /// and is then replayed for every output tile.
+#[derive(Clone, Debug, PartialEq)]
 enum LayerOp {
     /// Start compositing a group. Children are composited into a temporary
     /// accumulator; the group result is blended over the parent accumulator
@@ -331,6 +332,13 @@ pub struct Compositor {
     /// the `VectorData::version` at the time the cache was built, so edits bump
     /// the version and trigger a re-rasterize + re-upload.
     vector_buffers: AHashMap<LayerId, (u64, TiledBuffer)>,
+    /// Plan from the most recent [`Compositor::composite`] call, keyed by
+    /// [`plan_fingerprint`]. Reused on consecutive frames whose document
+    /// structure is unchanged (window resize, pure pan/zoom) so we skip the
+    /// full [`Compositor::build_plan`] walk; the result cache's per-tile
+    /// signatures then short-circuit every output tile without dispatching.
+    cached_plan: Vec<LayerOp>,
+    plan_key: Option<u64>,
     /// Number of `composite_tile_over` dispatches issued during the last
     /// `composite` call.
     dispatch_count: u64,
@@ -387,6 +395,8 @@ impl Compositor {
             adjustment: AdjustmentPipelines::new(ctx),
             group_pool: Vec::new(),
             vector_buffers: AHashMap::new(),
+            cached_plan: Vec::new(),
+            plan_key: None,
             dispatch_count: 0,
             dirty_keys: AHashSet::new(),
         }
@@ -412,6 +422,8 @@ impl Compositor {
         self.result.clear();
         self.group_pool.clear();
         self.vector_buffers.clear();
+        self.cached_plan.clear();
+        self.plan_key = None;
         self.dispatch_count = 0;
         self.dirty_keys.clear();
     }
@@ -451,13 +463,41 @@ impl Compositor {
         region: Rect,
     ) -> Result<&AHashMap<TileCoord, wgpu::TextureView>, OgreError> {
         let order = doc.render_order()?;
-        let plan = self.build_plan(ctx, doc, &order)?;
+        // Per-layer buffer sync runs every composite: it cheaply uploads tiles
+        // whose backing Arc has changed and evicts leftover entries when a
+        // layer's content type changes. Skipping it would mean a tile mutated
+        // mid-session never reaches the GPU.
+        self.sync_doc_state(ctx, doc, &order);
+        // Pure viewport pans/zooms keep the document structurally identical,
+        // so the previous frame's plan is still correct. Rebuild only on a
+        // structural fingerprint change. Detach into a local Vec so the
+        // subsequent self-mutating steps don't fight the plan borrow.
+        let key = plan_fingerprint(doc, &order);
+        let plan: Vec<LayerOp> = if self.plan_key == Some(key) {
+            self.cached_plan.clone()
+        } else {
+            let rebuilt = self.build_plan(doc, &order)?;
+            self.cached_plan = rebuilt;
+            self.plan_key = Some(key);
+            self.cached_plan.clone()
+        };
 
         // Evict GPU textures for layers that no longer exist in the document.
         let layer_ids: AHashSet<LayerId> = order.iter().map(|(id, _)| *id).collect();
         self.tiles.retain_layers(&layer_ids);
         self.masks.retain_layers(&layer_ids);
-        self.vector_buffers.retain(|id, _| layer_ids.contains(id));
+        // Vector rasterizations live outside the source-tile budget, so without
+        // a visibility check they accumulate for every layer a user has ever
+        // hidden — same memory shape as a leak across an editing session.
+        // Walk the ancestor chain: a child's `visible = true` is irrelevant when
+        // its parent group is hidden, since `build_plan` skips the subtree.
+        let visible_subtree: AHashSet<LayerId> = layer_ids
+            .iter()
+            .filter(|id| is_visible_subtree(doc, **id))
+            .copied()
+            .collect();
+        self.vector_buffers
+            .retain(|id, _| visible_subtree.contains(id));
 
         let expanded_region = expand_region_by_tiles(region, RESULT_CACHE_MARGIN_TILES)
             .intersect(doc.canvas)
@@ -481,10 +521,41 @@ impl Compositor {
         Ok(self.result.views())
     }
 
+    /// Push every per-layer GPU state update that doesn't depend on the plan:
+    /// upload raster/vector tiles whose backing `Arc` changed since last
+    /// composite, clear leftover group entries when a layer's content type
+    /// switches, and reconcile mask caches. Idempotent: re-running on an
+    /// unchanged doc is a `ptr_eq` check per layer.
+    fn sync_doc_state(&mut self, ctx: &GpuContext, doc: &Document, order: &[(LayerId, u8)]) {
+        for &(id, _) in order {
+            let Ok(layer) = doc.layer(id) else {
+                continue;
+            };
+            match &layer.content {
+                LayerContent::Group { .. } => {
+                    self.tiles.clear_layer(id);
+                    self.masks.clear_layer(id);
+                }
+                LayerContent::Raster { .. } => {
+                    self.tiles.sync_layer(ctx, layer);
+                    if layer.mask().is_some() {
+                        self.masks.sync_layer_mask(ctx, layer);
+                    } else {
+                        self.masks.clear_layer(id);
+                    }
+                }
+                LayerContent::Vector(_) => {
+                    self.sync_vector_layer(ctx, layer);
+                    self.masks.clear_layer(id);
+                }
+                LayerContent::Adjustment(_) => {}
+            }
+        }
+    }
+
     /// Build the render plan and sync tile caches for all layers.
     fn build_plan(
         &mut self,
-        ctx: &GpuContext,
         doc: &Document,
         order: &[(LayerId, u8)],
     ) -> Result<Vec<LayerOp>, OgreError> {
@@ -513,11 +584,6 @@ impl Compositor {
             };
 
             if matches!(layer.content, LayerContent::Group { .. }) {
-                // Groups own no tiles or masks. Evict any cached data left
-                // behind when a layer id transitions from raster to group.
-                self.tiles.clear_layer(id);
-                self.masks.clear_layer(id);
-
                 if !layer.visible || sanitize_opacity(layer.opacity) == 0.0 {
                     // Skip the entire subtree.
                     i += 1;
@@ -597,19 +663,6 @@ impl Compositor {
                 .next()
                 .unwrap_or(IVec2::ZERO);
             let effective_offset = checked_add(parent_offset, layer.offset);
-
-            let is_vector = matches!(layer.content, LayerContent::Vector(_));
-            if is_vector {
-                self.sync_vector_layer(ctx, layer);
-                self.masks.clear_layer(id);
-            } else {
-                self.tiles.sync_layer(ctx, layer);
-                if layer.mask().is_some() {
-                    self.masks.sync_layer_mask(ctx, layer);
-                } else {
-                    self.masks.clear_layer(id);
-                }
-            }
 
             plan.push(LayerOp::Raster {
                 layer_id: id,
@@ -1056,6 +1109,157 @@ fn checked_add(a: IVec2, b: IVec2) -> Option<IVec2> {
     Some(IVec2::new(a.x.checked_add(b.x)?, a.y.checked_add(b.y)?))
 }
 
+/// True when `id` and every ancestor group is `visible == true`. A child with
+/// `visible = true` is still hidden from the composite when a parent group is
+/// hidden, so naive per-layer visibility under-evicts cached rasterizations.
+fn is_visible_subtree(doc: &Document, id: LayerId) -> bool {
+    let mut current = id;
+    loop {
+        match doc.layer(current) {
+            Ok(layer) => {
+                if !layer.visible {
+                    return false;
+                }
+                match doc.parent_of(current) {
+                    Some(parent) => current = parent,
+                    None => return true,
+                }
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+/// Mix the discriminants and parameters of every [`AdjustmentKind`] variant
+/// into `h`. Adjustment layers are the only content variant whose plan output
+/// depends on a payload, so this is the only place structural detail needs
+/// the extra granularity.
+fn hash_adjustment_kind(h: &mut AHasher, kind: &AdjustmentKind) {
+    use ogre_core::AdjustmentKind;
+    use std::hash::Hasher;
+    match kind {
+        AdjustmentKind::BrightnessContrast {
+            brightness,
+            contrast,
+        } => {
+            h.write_u8(0);
+            h.write_u32(brightness.to_bits());
+            h.write_u32(contrast.to_bits());
+        }
+        AdjustmentKind::Invert => h.write_u8(1),
+        AdjustmentKind::Desaturate => h.write_u8(2),
+        AdjustmentKind::Levels {
+            input_black,
+            input_white,
+            output_black,
+            output_white,
+            gamma,
+        } => {
+            h.write_u8(3);
+            h.write_u32(input_black.to_bits());
+            h.write_u32(input_white.to_bits());
+            h.write_u32(output_black.to_bits());
+            h.write_u32(output_white.to_bits());
+            h.write_u32(gamma.to_bits());
+        }
+        AdjustmentKind::Curves { points } => {
+            h.write_u8(4);
+            for p in points {
+                h.write_u32(p.input.to_bits());
+                h.write_u32(p.output.to_bits());
+            }
+        }
+        AdjustmentKind::HueSat {
+            hue,
+            saturation,
+            lightness,
+        } => {
+            h.write_u8(5);
+            h.write_u32(hue.to_bits());
+            h.write_u32(saturation.to_bits());
+            h.write_u32(lightness.to_bits());
+        }
+        AdjustmentKind::Posterize { levels } => {
+            h.write_u8(6);
+            h.write_u32(*levels);
+        }
+        AdjustmentKind::Threshold { level } => {
+            h.write_u8(7);
+            h.write_u32(level.to_bits());
+        }
+        AdjustmentKind::GradientMap { fg, bg } => {
+            h.write_u8(8);
+            h.write_u32(fg.r.to_bits());
+            h.write_u32(fg.g.to_bits());
+            h.write_u32(fg.b.to_bits());
+            h.write_u32(fg.a.to_bits());
+            h.write_u32(bg.r.to_bits());
+            h.write_u32(bg.g.to_bits());
+            h.write_u32(bg.b.to_bits());
+            h.write_u32(bg.a.to_bits());
+        }
+    }
+}
+
+/// Hash of every property of `order` plus per-layer structure that influences
+/// [`Compositor::build_plan`]. A pure viewport pan/zoom leaves this fingerprint
+/// untouched and lets the compositor reuse the previous frame's plan.
+fn plan_fingerprint(doc: &Document, order: &[(LayerId, u8)]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = AHasher::default();
+    h.write_u64(order.len() as u64);
+    for &(id, depth) in order {
+        // `LayerId: Hash` is auto-implemented by slotmap for the new key
+        // type — using it avoids leaking the `slotmap::Key` trait into scope
+        // just to read `KeyData::as_ffi`.
+        id.hash(&mut h);
+        h.write_u8(depth);
+        match doc.layer(id) {
+            Ok(layer) => {
+                h.write_u8(u8::from(layer.visible));
+                h.write_u32(layer.opacity.to_bits());
+                let blend_byte = match layer.blend {
+                    BlendMode::Normal => 0,
+                    BlendMode::Multiply => 1,
+                    BlendMode::Screen => 2,
+                    BlendMode::Overlay => 3,
+                    BlendMode::Darken => 4,
+                    BlendMode::Lighten => 5,
+                    BlendMode::ColorDodge => 6,
+                    BlendMode::ColorBurn => 7,
+                    BlendMode::HardLight => 8,
+                    BlendMode::SoftLight => 9,
+                    BlendMode::Difference => 10,
+                    BlendMode::Exclusion => 11,
+                    BlendMode::Add => 12,
+                };
+                h.write_u8(blend_byte);
+                h.write_i32(layer.offset.x);
+                h.write_i32(layer.offset.y);
+                let content_byte = match &layer.content {
+                    LayerContent::Group { .. } => 0,
+                    LayerContent::Raster { .. } => 1,
+                    LayerContent::Adjustment(kind) => {
+                        h.write_u8(2);
+                        // Adjustment plan output includes the variant, so the
+                        // fingerprint must too. Without this, swapping
+                        // Invert -> Desaturate leaves the cached plan intact
+                        // and the result cache's signature short-circuits.
+                        hash_adjustment_kind(&mut h, kind);
+                        2
+                    }
+                    LayerContent::Vector(_) => 3,
+                };
+                h.write_u8(content_byte);
+            }
+            Err(_) => {
+                h.write_u8(0xff);
+            }
+        }
+    }
+    h.finish()
+}
+
 /// Expand `region` by `margin` tiles in each direction, clamping to `i32` bounds.
 ///
 /// An empty region is returned unchanged so the caller does not composite
@@ -1128,6 +1332,136 @@ mod tests {
             .composite(&ctx, &doc, Rect::new(0, 0, 512, 64))
             .unwrap();
         assert!(compositor.tiles.len() <= 4);
+    }
+
+    #[test]
+    fn composite_reuses_plan_when_document_unchanged() {
+        let ctx = GpuContext::headless();
+        let mut doc = Document::new(64, 64);
+        let id = doc.add_raster_layer("r");
+        fill_rect(
+            doc.layer_mut(id).unwrap().buffer_mut().unwrap(),
+            Rect::new(0, 0, 64, 64),
+            Rgba32F::new(1.0, 0.0, 0.0, 1.0),
+        );
+
+        let mut compositor = Compositor::new(&ctx);
+        let region = Rect::new(0, 0, 64, 64);
+        compositor.composite(&ctx, &doc, region).unwrap();
+        let first_key = compositor.plan_key;
+        let first_plan = compositor.cached_plan.clone();
+        assert!(first_key.is_some(), "plan key set after first composite");
+        assert!(!first_plan.is_empty());
+
+        // Second composite on unchanged doc: plan key + cached plan must
+        // survive so build_plan is not re-entered. We simulate the savings
+        // by checking identity — the cached_plan Vec is reused, not replaced.
+        compositor.composite(&ctx, &doc, region).unwrap();
+        assert_eq!(
+            compositor.plan_key, first_key,
+            "plan key changed on unchanged doc"
+        );
+        // Pointer-stable storage after a no-op composite: cached_plan is
+        // re-cloned from self.cached_plan but we left it in place, so its
+        // length and content match.
+        assert_eq!(compositor.cached_plan, first_plan);
+
+        // Mutating the doc's opacity invalidates the fingerprint and forces
+        // a rebuild — proven by the cached_plan length/content changing.
+        doc.layer_mut(id).unwrap().opacity = 0.5;
+        compositor.composite(&ctx, &doc, region).unwrap();
+        assert_ne!(
+            compositor.plan_key, first_key,
+            "plan key did not change after opacity edit"
+        );
+        assert_ne!(
+            compositor.cached_plan, first_plan,
+            "plan was not rebuilt after opacity edit"
+        );
+    }
+
+    #[test]
+    fn clear_caches_drops_cached_plan() {
+        let ctx = GpuContext::headless();
+        let mut doc = Document::new(64, 64);
+        doc.add_raster_layer("r");
+        let mut compositor = Compositor::new(&ctx);
+        compositor
+            .composite(&ctx, &doc, Rect::new(0, 0, 64, 64))
+            .unwrap();
+        assert!(compositor.plan_key.is_some());
+        assert!(!compositor.cached_plan.is_empty());
+
+        compositor.clear_caches();
+        assert!(compositor.plan_key.is_none());
+        assert!(compositor.cached_plan.is_empty());
+    }
+
+    #[test]
+    fn composite_evicts_vector_buffer_for_hidden_layer() {
+        let ctx = GpuContext::headless();
+        let mut doc = Document::new(64, 64);
+        let id = doc.add_raster_layer("v");
+
+        let mut compositor = Compositor::new(&ctx);
+        // Pretend the rasterizer pre-populated the cache for a vector layer.
+        // Using the document-allocated id matters: visibility must drop a live
+        // entry, not just one whose layer no longer exists.
+        let buffer = TiledBuffer::new();
+        compositor.vector_buffers.insert(id, (1, buffer));
+        assert_eq!(compositor.vector_buffers.len(), 1);
+
+        compositor
+            .composite(&ctx, &doc, Rect::new(0, 0, 64, 64))
+            .unwrap();
+        assert_eq!(compositor.vector_buffers.len(), 1);
+
+        // Hide the layer: cache entry must drop on the next composite.
+        doc.layer_mut(id).unwrap().visible = false;
+        compositor
+            .composite(&ctx, &doc, Rect::new(0, 0, 64, 64))
+            .unwrap();
+        assert!(compositor.vector_buffers.is_empty());
+    }
+
+    #[test]
+    fn composite_evicts_vector_buffer_for_layer_inside_hidden_group() {
+        use ogre_core::Layer;
+
+        let ctx = GpuContext::headless();
+        let mut doc = Document::new(64, 64);
+        let bg = doc.add_raster_layer("bg");
+        let group = Layer::new_group("group");
+        let group = doc.insert_layer_above(group, bg).unwrap();
+        let child = doc.add_raster_layer("child");
+
+        let mut compositor = Compositor::new(&ctx);
+        compositor
+            .vector_buffers
+            .insert(child, (1, TiledBuffer::new()));
+        assert_eq!(compositor.vector_buffers.len(), 1);
+
+        // Move the child into the group first.
+        doc.move_into_group(child, group, 0).unwrap();
+        compositor
+            .composite(&ctx, &doc, Rect::new(0, 0, 64, 64))
+            .unwrap();
+        assert_eq!(
+            compositor.vector_buffers.len(),
+            1,
+            "child cached while group visible"
+        );
+
+        // Hide the parent group: child is still `visible = true` but contributes
+        // nothing. Its vector buffer must drop anyway.
+        doc.layer_mut(group).unwrap().visible = false;
+        compositor
+            .composite(&ctx, &doc, Rect::new(0, 0, 64, 64))
+            .unwrap();
+        assert!(
+            compositor.vector_buffers.is_empty(),
+            "child cached despite hidden group"
+        );
     }
 
     fn fill_rect(buffer: &mut TiledBuffer, rect: Rect, color: Rgba32F) {

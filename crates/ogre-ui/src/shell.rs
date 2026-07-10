@@ -2541,8 +2541,11 @@ pub(crate) fn render_bg_removal_spinner(ui: &mut egui::Ui, state: &AppState) {
         });
     });
     // The worker runs off-thread; request repaints so the result is applied
-    // without waiting for the next input event.
-    ui.ctx().request_repaint();
+    // without waiting for the next input event. Throttled at 10 Hz so a long
+    // AI refinement doesn't pin the UI at full repaint cadence and burn GPU
+    // for minutes on end — `poll_background_removal` already enforces an
+    // upper-bound timeout, so we don't need sub-frame responsiveness here.
+    ui.ctx().request_repaint_after(Duration::from_millis(100));
 }
 
 /// Render the "quit with unsaved changes" confirmation modal.
