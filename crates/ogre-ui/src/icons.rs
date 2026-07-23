@@ -92,9 +92,10 @@ pub fn tool_image(kind: ToolKind, size: f32, tint: Color32) -> egui::Image<'stat
     let uri = match kind {
         ToolKind::RectSelect => "bytes://ogre/icons/select-rectangular.svg",
         ToolKind::EllipseSelect => "bytes://ogre/icons/draw-ellipse.svg",
-        ToolKind::PolygonLasso | ToolKind::FreehandLasso | ToolKind::MagneticLasso => {
+        ToolKind::PolygonLasso | ToolKind::FreehandLasso => {
             "bytes://ogre/icons/edit-select-lasso.svg"
         }
+        ToolKind::MagneticLasso => "bytes://ogre/icons/magnetic-lasso.svg",
         ToolKind::MagicWand | ToolKind::Eyedropper => "bytes://ogre/icons/tool_color_picker.svg",
         ToolKind::QuickSelect => "bytes://ogre/icons/quick-select.svg",
         ToolKind::Brush => "bytes://ogre/icons/draw-brush.svg",

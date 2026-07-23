@@ -125,18 +125,23 @@ scripts/licenses.sh   # requires cargo-about
 ## Install
 
 The release build packages into a single-file **AppImage** installed under
-`~/.local/bin` without root.
+`~/.local/bin` without root. Prefer the helper script once the one-time tools
+are on `PATH`:
 
 ```sh
-cargo build --release -p ogre
-
-# One-time: linuxdeploy + appimagetool on PATH (continuous static builds)
+# One-time: linuxdeploy + appimagetool (continuous static builds) + ImageMagick
 curl -L https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o ~/.local/bin/linuxdeploy
 curl -L https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -o ~/.local/bin/appimagetool
 chmod +x ~/.local/bin/linuxdeploy ~/.local/bin/appimagetool
 
-# AppDir: binary + .desktop + 256×256 icon, then build the AppImage.
-# NO_STRIP=1 is required where libraries use DT_RELR relocations.
+scripts/build_appimage.sh          # → target/appimage/Arte_Ogre-x86_64.AppImage
+install -Dm755 target/appimage/Arte_Ogre-x86_64.AppImage ~/.local/bin/arte-ogre
+```
+
+Manual equivalent (same layout the script builds):
+
+```sh
+cargo build --release -p ogre
 rm -rf AppDir && mkdir -p AppDir/usr/bin AppDir/usr/share/applications \
   AppDir/usr/share/icons/hicolor/256x256/apps
 cp target/release/ogre AppDir/usr/bin/arte-ogre
@@ -154,6 +159,7 @@ Terminal=false
 StartupWMClass=arte-ogre
 MimeType=image/png;image/jpeg;image/webp;image/avif;image/tiff;image/x-ora;
 EOF
+# NO_STRIP=1 is required where libraries use DT_RELR relocations.
 NO_STRIP=1 linuxdeploy --appdir AppDir \
   --desktop-file AppDir/usr/share/applications/arte-ogre.desktop \
   --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/arte-ogre.png \
@@ -190,10 +196,14 @@ After install, launch with `arte-ogre [image.png …]`.
 | **Color** | `lcms2` (ICC) |
 | **AI matte** | IS-Net via pure-Rust ONNX (`tract`), optional `ml` feature |
 | **Plugins** | `wasmtime` (WASM) + `mlua` (Lua), sandboxed |
+| **Version** | Workspace crates at `1.7.1` (see `Cargo.toml` members) |
 
 The crates form one dependency chain: `ogre-core` → `ogre-gpu` → `ogre-ui` →
 `ogre` (binary), with `ogre-io`, `ogre-plugins`, and `ogre-vector` alongside.
-`ogre-core` is the headless ground truth and is `#![deny(unsafe_code)]`.
+`ogre-core` is the headless ground truth and is `#![deny(unsafe_code)]`. There
+are no JavaScript packages; third-party Rust crates and assets are listed in
+[CREDITS.md](CREDITS.md) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+(regenerate with `scripts/licenses.sh` after dependency changes).
 
 ---
 

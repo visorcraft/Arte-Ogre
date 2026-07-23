@@ -367,8 +367,11 @@ impl ToolKind {
             ToolKind::EllipseSelect => {
                 include_bytes!("../../assets/icons/draw-ellipse.svg")
             }
-            ToolKind::PolygonLasso | ToolKind::FreehandLasso | ToolKind::MagneticLasso => {
+            ToolKind::PolygonLasso | ToolKind::FreehandLasso => {
                 include_bytes!("../../assets/icons/edit-select-lasso.svg")
+            }
+            ToolKind::MagneticLasso => {
+                include_bytes!("../../assets/icons/magnetic-lasso.svg")
             }
             ToolKind::MagicWand => {
                 include_bytes!("../../assets/icons/tool_color_picker.svg")

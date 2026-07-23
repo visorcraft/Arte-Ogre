@@ -83,4 +83,7 @@ The default fonts shipped with egui are covered by the crate entries above (see 
 EOF
 } > "$CREDITS"
 
+# cargo-about can emit CRLF on some platforms; keep the repo LF-only.
+sed -i 's/\r$//' "$CREDITS" "$TPL"
+
 echo "regenerated $CREDITS and $TPL ($DATE)"

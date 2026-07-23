@@ -23,8 +23,8 @@ from it.
 Background** (tolerance 0.20, edge cleanup 0.55 - the shipped defaults), then
 trimmed to the subject and centered in a square with ~8% padding. The window /
 taskbar / title-bar icon is `ArteOgre.png` embedded in the `ogre` binary via
-`eframe`'s `with_icon`; the welcome screen, tools sidebar, and About dialog
-render it through `ogre_ui::icons::brand_image`.
+`eframe`'s `with_icon`; the welcome screen embeds `ogre.png` for the brand
+spot (`ogre_ui::welcome`).
 
 ## Regenerating
 

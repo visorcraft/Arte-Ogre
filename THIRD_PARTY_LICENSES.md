@@ -1,7 +1,7 @@
 # Third-Party Licenses
 
 This document lists the licenses of the third-party Rust crates distributed with Arte Ogre.
-It was generated automatically from the workspace `Cargo.lock` on 2026-06-27 using `cargo-about`.
+It was generated automatically from the workspace `Cargo.lock` on 2026-07-23 using `cargo-about`.
 
 For a concise table of contributors, repositories, and licenses, see [CREDITS.md](CREDITS.md).
 
@@ -447,7 +447,7 @@ Used by: cursor-icon@1.2.0
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: as-raw-xcb-connection@1.0.1, encoding_rs@0.8.35, kurbo@0.11.3, kurbo@0.13.1, nohash-hasher@0.2.0, polycool@0.4.0, raw-window-metal@1.1.0, static_assertions@1.1.0, tinyvec@1.11.0, utf8_iter@1.0.4, x11rb-protocol@0.13.2, x11rb@0.13.2, zeroize@1.9.0
+Used by: as-raw-xcb-connection@1.0.1, encoding_rs@0.8.35, kurbo@0.11.3, kurbo@0.13.1, nohash-hasher@0.2.0, polycool@0.4.0, raw-window-metal@1.1.0, static_assertions@1.1.0, tinyvec@1.12.0, utf8_iter@1.0.4, x11rb-protocol@0.13.2, x11rb@0.13.2, zeroize@1.9.0
 
 ```
 
@@ -657,7 +657,7 @@ Used by: as-raw-xcb-connection@1.0.1, encoding_rs@0.8.35, kurbo@0.11.3, kurbo@0.
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: cranelift-bforest@0.133.1, cranelift-codegen-meta@0.133.1, cranelift-codegen-shared@0.133.1, cranelift-codegen@0.133.1, cranelift-control@0.133.1, cranelift-entity@0.133.1, cranelift-frontend@0.133.1, cranelift-native@0.133.1, regalloc2@0.15.1, target-lexicon@0.13.5, wasmtime-environ@46.0.1, wasmtime-internal-cache@46.0.1, wasmtime-internal-cranelift@46.0.1, wasmtime-internal-fiber@46.0.1, wasmtime-internal-unwinder@46.0.1, wasmtime@46.0.1
+Used by: cranelift-bforest@0.134.2, cranelift-codegen-meta@0.134.2, cranelift-codegen-shared@0.134.2, cranelift-codegen@0.134.2, cranelift-control@0.134.2, cranelift-entity@0.134.2, cranelift-frontend@0.134.2, cranelift-native@0.134.2, regalloc2@0.15.2, target-lexicon@0.13.5, wasmtime-environ@47.0.2, wasmtime-internal-cache@47.0.2, wasmtime-internal-cranelift@47.0.2, wasmtime-internal-fiber@47.0.2, wasmtime-internal-unwinder@47.0.2, wasmtime@47.0.2
 
 ```
 
@@ -1922,7 +1922,7 @@ Used by: tinyvec_macros@0.1.1
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: zerocopy-derive@0.8.52, zerocopy@0.8.52
+Used by: zerocopy-derive@0.8.55, zerocopy@0.8.55
 
 ```
                                  Apache License
@@ -2341,7 +2341,7 @@ Used by: web-time@1.1.0
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: moxcms@0.8.1, pxfm@0.1.29
+Used by: moxcms@0.8.1, pxfm@0.1.30
 
 ```
                                  Apache License
@@ -2550,7 +2550,7 @@ Used by: moxcms@0.8.1, pxfm@0.1.29
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: ciborium-io@0.2.2, ciborium-ll@0.2.2, ciborium@0.2.2, codespan-reporting@0.13.1, imgref@1.12.2, memfd@0.6.5, safetensors@0.7.0, self_cell@1.2.2, sys-locale@0.3.2, unarray@0.1.4, unicode-linebreak@0.1.5, ureq@3.3.0, zune-core@0.5.1, zune-jpeg@0.5.15
+Used by: ciborium-io@0.2.2, ciborium-ll@0.2.2, ciborium@0.2.2, codespan-reporting@0.13.1, imgref@1.12.2, memfd@0.6.5, safetensors@0.8.0, self_cell@1.3.0, sys-locale@0.3.2, unarray@0.1.4, unicode-linebreak@0.1.5, ureq@3.3.0, zune-core@0.5.1, zune-jpeg@0.5.15
 
 ```
                                  Apache License
@@ -3177,7 +3177,7 @@ Used by: bit_field@0.10.3, unicode-general-category@1.1.0, winapi@0.3.9
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: anstyle@1.0.14, clap@4.6.1, clap_builder@4.6.0, clap_lex@1.1.0, cobs@0.3.0, crc32fast@1.5.0, float-ord@0.3.2, foreign-types-macros@0.2.3, foreign-types-shared@0.3.1, foreign-types@0.5.0, hex@0.4.3, jni-sys@0.3.1, jni-sys@0.4.1, no_std_io2@0.9.4, quick-error@1.2.3, quick-error@2.0.1, serde_spanned@1.1.1, toml@0.9.12+spec-1.1.0, toml@1.1.2+spec-1.1.0, toml_datetime@0.7.5+spec-1.1.0, toml_datetime@1.1.1+spec-1.1.0, toml_edit@0.25.12+spec-1.1.0, toml_parser@1.1.2+spec-1.1.0, toml_writer@1.1.1+spec-1.1.0
+Used by: anstyle@1.0.14, clap@4.6.4, clap_builder@4.6.2, clap_lex@1.1.0, cobs@0.3.0, crc32fast@1.5.0, float-ord@0.3.2, foreign-types-macros@0.2.4, foreign-types-shared@0.3.1, foreign-types@0.5.0, hex@0.4.3, jni-sys@0.3.1, jni-sys@0.4.1, no_std_io2@0.9.4, quick-error@1.2.3, quick-error@2.0.1, serde_spanned@1.1.1, toml@0.9.12+spec-1.1.0, toml@1.1.3+spec-1.1.0, toml_datetime@0.7.5+spec-1.1.0, toml_datetime@1.1.1+spec-1.1.0, toml_edit@0.25.13+spec-1.1.0, toml_parser@1.1.2+spec-1.1.0, toml_writer@1.1.2+spec-1.1.0
 
 ```
                                  Apache License
@@ -3795,7 +3795,7 @@ Used by: rustfft@6.4.1, strength_reduce@0.2.4
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: futures-channel@0.3.32, futures-core@0.3.32, futures-io@0.3.32, futures-macro@0.3.32, futures-sink@0.3.32, futures-task@0.3.32, futures-util@0.3.32, futures@0.3.32
+Used by: futures-channel@0.3.33, futures-core@0.3.33, futures-io@0.3.33, futures-macro@0.3.33, futures-sink@0.3.33, futures-task@0.3.33, futures-util@0.3.33, futures@0.3.33
 
 ```
                               Apache License
@@ -5049,7 +5049,7 @@ limitations under the License.
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: glam@0.33.1
+Used by: glam@0.33.2
 
 ```
                               Apache License
@@ -5467,7 +5467,7 @@ limitations under the License.
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: rustls-pki-types@1.14.1
+Used by: rustls-pki-types@1.15.1
 
 ```
                               Apache License
@@ -6302,7 +6302,7 @@ limitations under the License.
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: addr2line@0.26.1, ahash@0.8.12, aligned@0.4.3, arbitrary@1.4.2, arrayvec@0.7.7, as-slice@0.2.1, async-channel@2.5.0, async-executor@1.14.0, async-io@2.6.0, async-lock@3.4.2, async-process@2.5.0, async-signal@0.2.14, async-task@4.7.1, atomic-waker@1.1.2, autocfg@1.5.1, base64@0.22.1, bitflags@1.3.2, bitflags@2.13.0, bitstream-io@4.10.0, blocking@1.6.2, bstr@1.12.3, bumpalo@3.20.3, cast@0.3.0, cc@1.2.65, cfg-if@1.0.4, concurrent-queue@2.5.0, core-foundation-sys@0.8.7, core-foundation@0.10.1, core-foundation@0.9.4, core-graphics-types@0.1.3, core-graphics@0.23.2, cpp_demangle@0.4.5, criterion-plot@0.8.2, criterion@0.8.2, crossbeam-deque@0.8.6, crossbeam-epoch@0.9.18, crossbeam-utils@0.8.21, data-url@0.3.2, debugid@0.8.0, displaydoc@0.2.6, either@1.16.0, equivalent@1.0.2, errno@0.3.14, euclid@0.22.14, event-listener-strategy@0.5.4, event-listener@5.4.1, fastrand@2.4.1, filetime@0.2.29, find-msvc-tools@0.1.9, fixedbitset@0.4.2, fixedbitset@0.5.7, flate2@1.1.9, fnv@1.0.7, form_urlencoded@1.2.2, futures-lite@2.6.1, gethostname@1.1.0, gimli@0.33.0, hashbrown@0.15.5, hashbrown@0.16.1, hashbrown@0.17.1, heck@0.5.0, hermit-abi@0.5.2, httparse@1.10.1, id-arena@2.3.0, idna@1.1.0, idna_adapter@1.2.2, indexmap@2.14.0, itertools@0.13.0, itertools@0.14.0, jobserver@0.1.34, js-sys@0.3.103, khronos-egl@6.0.0, lazy_static@1.5.0, leb128fmt@0.1.0, libfuzzer-sys@0.4.13, linux-raw-sys@0.12.1, linux-raw-sys@0.4.15, lock_api@0.4.14, log@0.4.33, maplit@1.0.2, matrixmultiply@0.3.10, memo-map@0.3.3, minijinja@2.21.0, ndarray@0.17.2, num-bigint@0.4.6, num-complex@0.4.6, num-derive@0.4.2, num-integer@0.1.46, num-rational@0.4.2, num-traits@0.2.19, object@0.39.1, once_cell@1.21.4, ordered-stream@0.2.0, parking@2.2.1, parking_lot@0.12.5, parking_lot_core@0.9.12, percent-encoding@2.3.2, petgraph@0.6.5, petgraph@0.8.3, piper@0.2.5, pkg-config@0.3.33, plain@0.2.3, png@0.17.16, png@0.18.1, polling@3.11.0, pollster@0.4.0, postcard@1.1.3, primal-check@0.3.4, proptest@1.11.0, prost-derive@0.14.4, prost@0.14.4, rawpointer@0.2.1, rayon-core@1.13.0, rayon@1.12.0, regex-automata@0.4.14, regex-syntax@0.8.11, regex@1.12.4, renderdoc-sys@1.1.0, ring@0.17.14, roxmltree@0.20.0, roxmltree@0.21.1, rustc-demangle@0.1.27, rustc-hash@1.1.0, rustc_version@0.4.1, rustix@0.38.44, rustix@1.1.4, rustls@0.23.41, rusty-fork@0.3.1, scoped-tls@1.0.1, scopeguard@1.2.0, signal-hook-registry@1.4.8, simd_cesu8@1.1.1, simplecss@0.2.2, smallvec@1.15.2, smol_str@0.2.2, smol_str@0.3.6, stable_deref_trait@1.2.1, svgtypes@0.15.3, svgtypes@0.16.1, swash@0.2.9, tar@0.4.46, tempfile@3.27.0, tinytemplate@1.2.1, tract-core@0.23.3, tract-data@0.23.3, tract-hir@0.23.3, tract-linalg@0.23.3, tract-nnef@0.23.3, tract-onnx-opl@0.23.3, tract-onnx@0.23.3, tract-pulse-opl@0.23.3, tract-pulse@0.23.3, ttf-parser@0.25.1, unicode-bidi-mirroring@0.4.0, unicode-bidi@0.3.18, unicode-ccc@0.4.0, unicode-properties@0.1.4, unicode-segmentation@1.13.3, unicode-vo@0.1.0, unicode-width@0.2.2, unicode-xid@0.2.6, url@2.5.8, uuid@1.23.4, version_check@0.9.5, wait-timeout@0.2.1, wasi@0.11.1+wasi-snapshot-preview1, wasip2@1.0.4+wasi-0.2.12, wasm-bindgen-futures@0.4.76, wasm-bindgen-macro-support@0.2.126, wasm-bindgen-macro@0.2.126, wasm-bindgen-shared@0.2.126, wasm-bindgen@0.2.126, wasm-compose@0.251.0, wasm-encoder@0.251.0, wasm-encoder@0.252.0, wasmparser@0.251.0, wasmprinter@0.251.0, wast@252.0.0, wat@1.252.0, web-sys@0.3.103, wit-bindgen@0.57.1, wit-parser@0.251.0, wl-clipboard-rs@0.9.3, xattr@1.6.1
+Used by: addr2line@0.26.1, ahash@0.8.12, aligned@0.4.3, arbitrary@1.4.2, arrayvec@0.7.8, as-slice@0.2.1, async-channel@2.5.0, async-executor@1.14.0, async-io@2.6.0, async-lock@3.4.2, async-process@2.5.0, async-signal@0.2.14, async-task@4.7.1, atomic-waker@1.1.2, autocfg@1.5.1, base64@0.22.1, base64@0.23.0, bitflags@1.3.2, bitflags@2.13.1, bitstream-io@4.10.0, blocking@1.6.2, bstr@1.13.0, bumpalo@3.20.3, cast@0.3.0, cc@1.3.0, cfg-if@1.0.4, concurrent-queue@2.5.0, core-foundation-sys@0.8.7, core-foundation@0.10.1, core-foundation@0.9.4, core-graphics-types@0.1.3, core-graphics@0.23.2, cpp_demangle@0.5.1, criterion-plot@0.8.2, criterion@0.8.2, crossbeam-deque@0.8.7, crossbeam-epoch@0.9.20, crossbeam-utils@0.8.22, data-url@0.3.2, debugid@0.8.0, displaydoc@0.2.6, either@1.16.0, equivalent@1.0.2, errno@0.3.14, euclid@0.22.14, event-listener-strategy@0.5.4, event-listener@5.4.1, fastrand@2.5.0, filetime@0.2.29, find-msvc-tools@0.1.9, fixedbitset@0.4.2, fixedbitset@0.5.7, flate2@1.1.9, fnv@1.0.7, form_urlencoded@1.2.2, futures-lite@2.6.1, gethostname@1.1.0, gimli@0.33.0, hashbrown@0.15.5, hashbrown@0.16.1, hashbrown@0.17.1, heck@0.5.0, hermit-abi@0.5.2, httparse@1.10.1, id-arena@2.3.0, idna@1.1.0, idna_adapter@1.2.2, indexmap@2.14.0, itertools@0.13.0, itertools@0.14.0, jobserver@0.1.35, js-sys@0.3.103, khronos-egl@6.0.0, lazy_static@1.5.0, leb128fmt@0.1.0, libfuzzer-sys@0.4.13, linux-raw-sys@0.12.1, linux-raw-sys@0.4.15, lock_api@0.4.14, log@0.4.33, maplit@1.0.2, matrixmultiply@0.3.11, memo-map@0.3.3, minijinja@2.21.0, ndarray@0.17.2, num-bigint@0.4.8, num-complex@0.4.6, num-derive@0.4.2, num-integer@0.1.46, num-rational@0.4.2, num-traits@0.2.19, object@0.39.1, once_cell@1.21.4, ordered-stream@0.2.0, parking@2.2.1, parking_lot@0.12.5, parking_lot_core@0.9.12, percent-encoding@2.3.2, petgraph@0.6.5, petgraph@0.8.3, piper@0.2.5, pkg-config@0.3.33, plain@0.2.3, png@0.17.16, png@0.18.1, polling@3.11.0, pollster@0.4.0, pollster@1.0.1, postcard@1.1.3, primal-check@0.3.4, proptest@1.11.0, prost-derive@0.14.4, prost@0.14.4, rawpointer@0.2.1, rayon-core@1.13.0, rayon@1.12.0, regex-automata@0.4.16, regex-syntax@0.8.11, regex@1.13.1, renderdoc-sys@1.1.0, ring@0.17.14, roxmltree@0.20.0, roxmltree@0.21.1, rustc-demangle@0.1.28, rustc-hash@1.1.0, rustc_version@0.4.1, rustix@0.38.44, rustix@1.1.4, rustls@0.23.42, rusty-fork@0.3.1, scoped-tls@1.0.1, scopeguard@1.2.0, signal-hook-registry@1.4.8, simd_cesu8@1.2.0, simplecss@0.2.2, smallvec@1.15.2, smol_str@0.2.2, smol_str@0.3.6, stable_deref_trait@1.2.1, svgtypes@0.15.3, svgtypes@0.16.1, swash@0.2.10, tar@0.4.46, tempfile@3.27.0, tinytemplate@1.2.1, tract-core@0.23.4, tract-data@0.23.4, tract-hir@0.23.4, tract-linalg@0.23.4, tract-nnef@0.23.4, tract-onnx-opl@0.23.4, tract-onnx@0.23.4, tract-pulse-opl@0.23.4, tract-pulse@0.23.4, ttf-parser@0.25.1, unicode-bidi-mirroring@0.4.0, unicode-bidi@0.3.18, unicode-ccc@0.4.0, unicode-properties@0.1.4, unicode-segmentation@1.13.3, unicode-vo@0.1.0, unicode-width@0.2.2, url@2.5.8, uuid@1.24.0, version_check@0.9.5, wait-timeout@0.2.1, wasi@0.11.1+wasi-snapshot-preview1, wasip2@1.0.4+wasi-0.2.12, wasm-bindgen-futures@0.4.76, wasm-bindgen-macro-support@0.2.126, wasm-bindgen-macro@0.2.126, wasm-bindgen-shared@0.2.126, wasm-bindgen@0.2.126, wasm-compose@0.252.0, wasm-encoder@0.252.0, wasm-encoder@0.254.0, wasmparser@0.252.0, wasmprinter@0.252.0, wast@254.0.0, wat@1.254.0, web-sys@0.3.103, wit-bindgen@0.57.1, wit-parser@0.252.0, wl-clipboard-rs@0.9.3, xattr@1.6.1
 
 ```
                               Apache License
@@ -6720,7 +6720,7 @@ limitations under the License.
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: block-buffer@0.10.4, chacha20@0.10.1, cpufeatures@0.2.17, cpufeatures@0.3.0, crypto-common@0.1.7, digest@0.10.7, sha2@0.10.9
+Used by: block-buffer@0.10.4, block-buffer@0.12.1, chacha20@0.10.1, const-oid@0.10.2, cpufeatures@0.2.17, cpufeatures@0.3.0, crypto-common@0.1.7, crypto-common@0.2.2, digest@0.10.7, digest@0.11.3, hybrid-array@0.4.13, sha2@0.10.9, sha2@0.11.0
 
 ```
                               Apache License
@@ -8575,6 +8575,81 @@ limitations under the License.
 
 ## Apache License 2.0 (Apache-2.0)
 
+Used by: font-types@0.12.2, read-fonts@0.41.0, skrifa@0.44.0
+
+```
+Apache License
+
+Version 2.0, January 2004
+
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+
+"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+
+"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+
+"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+
+You must give any other recipients of the Work or Derivative Works a copy of this License; and
+You must cause any modified files to carry prominent notices stating that You changed the files; and
+You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+
+You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+Copyright 2019 Fontations Developers
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+```
+
+## Apache License 2.0 (Apache-2.0)
+
 Used by: enumflags2@0.7.12
 
 ```
@@ -9503,7 +9578,7 @@ Apache License
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: bytemuck@1.25.0, bytemuck_derive@1.10.2
+Used by: bytemuck@1.25.2, bytemuck_derive@1.11.0
 
 ```
 Apache License
@@ -9572,7 +9647,7 @@ limitations under the License.
 
 ## Apache License 2.0 (Apache-2.0)
 
-Used by: ab_glyph@0.2.32, ab_glyph_rasterizer@0.1.10, accesskit@0.24.1, accesskit_atspi_common@0.18.1, accesskit_consumer@0.35.0, accesskit_consumer@0.36.0, accesskit_consumer@0.37.0, accesskit_macos@0.26.2, accesskit_unix@0.21.1, accesskit_windows@0.32.1, accesskit_winit@0.32.2, allocator-api2@0.2.21, android-activity@0.6.1, android_system_properties@0.1.5, anes@0.1.6, anyhow@1.0.103, anymap3@1.1.0, arboard@3.6.1, async-trait@0.1.89, color@0.3.3, cranelift-assembler-x64-meta@0.133.1, cranelift-assembler-x64@0.133.1, cranelift-bitset@0.133.1, cranelift-isle@0.133.1, cranelift-srcgen@0.133.1, directories-next@2.0.0, directories@6.0.0, dirs-sys-next@0.1.2, dirs-sys@0.5.0, dispatch2@0.3.1, document-features@0.2.12, dunce@1.0.5, dyn-clone@1.0.20, dyn-hash@1.0.0, ecolor@0.35.0, eframe@0.35.0, egui-wgpu@0.35.0, egui-winit@0.35.0, egui@0.35.0, egui_extras@0.35.0, emath@0.35.0, enum-map-derive@0.17.0, enum-map@2.7.3, epaint@0.35.0, epaint_default_fonts@0.35.0, erased-serde@0.4.10, fdeflate@0.3.7, fearless_simd@0.4.1, fxprof-processed-profile@0.8.1, gl_generator@0.14.0, gpu-descriptor-types@0.2.0, gpu-descriptor@0.3.2, guillotiere@0.7.0, half@2.7.1, image-webp@0.2.4, image@0.25.10, inventory@0.3.24, itoa@1.0.18, jni-macros@0.22.4, jni-sys-macros@0.4.1, jni@0.22.4, khronos_api@3.1.0, libc@0.2.186, linebender_resource_handle@0.1.1, litrs@1.0.0, lyon@1.0.19, lyon_algorithms@1.0.20, lyon_geom@1.0.19, lyon_path@1.0.19, lyon_tessellation@1.0.20, mach2@0.6.0, miniz_oxide@0.8.9, naga@29.0.3, ndk-context@0.1.1, ndk-sys@0.6.0+11769913, ndk@0.9.0, num_enum@0.7.6, num_enum_derive@0.7.6, objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, objc2-metal@0.3.2, objc2-quartz-core@0.3.2, objc2-ui-kit@0.3.2, owned_ttf_parser@0.25.1, paste@1.0.15, pastey@0.1.1, pastey@0.2.3, pin-project-internal@1.1.13, pin-project-lite@0.2.17, pin-project@1.1.13, portable-atomic-util@0.2.7, portable-atomic@1.13.1, proc-macro2-diagnostics@0.10.1, proc-macro2@1.0.106, profiling-procmacros@1.0.18, profiling@1.0.18, pulley-interpreter@46.0.1, pulley-macros@46.0.1, quote@1.0.46, r-efi@5.3.0, r-efi@6.0.0, rand@0.10.1, rand@0.9.4, rand_chacha@0.9.0, rand_xorshift@0.4.0, range-alloc@0.1.5, raw-window-handle@0.6.2, resvg@0.45.1, resvg@0.47.0, rustc-hash@2.1.2, rustversion@1.0.22, semver@1.0.28, serde@1.0.228, serde_core@1.0.228, serde_derive@1.0.228, serde_json@1.0.150, serde_repr@0.1.20, shlex@2.0.1, simdutf8@0.1.5, siphasher@1.0.3, spirv@0.4.0+sdk-1.4.341.0, string-interner@0.20.0, svg_fmt@0.4.5, syn@2.0.118, thiserror-impl@1.0.69, thiserror-impl@2.0.18, thiserror@1.0.69, thiserror@2.0.18, tract-extra@0.23.3, tract-transformers@0.23.3, type-map@0.5.1, typed-path@0.12.3, typeid@1.0.3, unicode-ident@1.0.24, ureq-proto@0.6.0, usvg@0.45.1, usvg@0.47.0, utf8-zero@0.8.1, vello@0.9.0, vello_common@0.0.9, vello_cpu@0.0.9, vello_encoding@0.9.0, vello_shaders@0.9.0, wasmtime-internal-component-macro@46.0.1, wasmtime-internal-component-util@46.0.1, wasmtime-internal-core@46.0.1, wasmtime-internal-jit-debug@46.0.1, wasmtime-internal-jit-icache-coherence@46.0.1, wasmtime-internal-versioned-export-macros@46.0.1, wasmtime-internal-wit-bindgen@46.0.1, wgpu-core-deps-apple@29.0.3, wgpu-core-deps-emscripten@29.0.3, wgpu-core-deps-wasm@29.0.3, wgpu-core-deps-windows-linux-android@29.0.3, wgpu-core@29.0.3, wgpu-hal@29.0.3, wgpu-naga-bridge@29.0.3, wgpu-types@29.0.3, wgpu@29.0.3, winapi-i686-pc-windows-gnu@0.4.0, winapi-x86_64-pc-windows-gnu@0.4.0, zstd-safe@7.2.4, zstd-sys@2.0.16+zstd.1.5.7, zune-inflate@0.2.54
+Used by: ab_glyph@0.2.32, ab_glyph_rasterizer@0.1.10, accesskit@0.24.1, accesskit_atspi_common@0.18.1, accesskit_consumer@0.35.0, accesskit_consumer@0.36.0, accesskit_consumer@0.38.0, accesskit_macos@0.26.3, accesskit_unix@0.21.1, accesskit_windows@0.32.1, accesskit_winit@0.32.2, allocator-api2@0.2.21, android-activity@0.6.1, android_system_properties@0.1.5, anes@0.1.6, anyhow@1.0.104, anymap3@1.1.0, arboard@3.6.1, async-trait@0.1.91, color@0.3.3, cranelift-assembler-x64-meta@0.134.2, cranelift-assembler-x64@0.134.2, cranelift-bitset@0.134.2, cranelift-isle@0.134.2, cranelift-srcgen@0.134.2, directories-next@2.0.0, directories@6.0.0, dirs-sys-next@0.1.2, dirs-sys@0.5.0, dispatch2@0.3.1, document-features@0.2.12, dunce@1.0.5, dyn-clone@1.0.20, dyn-hash@1.0.0, ecolor@0.35.0, eframe@0.35.0, egui-wgpu@0.35.0, egui-winit@0.35.0, egui@0.35.0, egui_extras@0.35.0, emath@0.35.0, enum-map-derive@0.17.0, enum-map@2.7.3, epaint@0.35.0, epaint_default_fonts@0.35.0, erased-serde@0.4.10, fdeflate@0.3.7, fearless_simd@0.4.1, fxprof-processed-profile@0.8.1, gl_generator@0.14.0, gpu-descriptor-types@0.2.0, gpu-descriptor@0.3.2, guillotiere@0.7.0, half@2.7.1, image-webp@0.2.4, image@0.25.10, inventory@0.3.24, itoa@1.0.18, jni-macros@0.22.4, jni-sys-macros@0.4.1, jni@0.22.4, khronos_api@3.1.0, libc@0.2.189, linebender_resource_handle@0.1.1, litrs@1.0.0, lyon@1.0.19, lyon_algorithms@1.0.20, lyon_geom@1.0.19, lyon_path@1.0.19, lyon_tessellation@1.0.20, mach2@0.6.0, miniz_oxide@0.8.9, naga@29.0.4, ndk-context@0.1.1, ndk-sys@0.6.0+11769913, ndk@0.9.0, num_enum@0.7.6, num_enum_derive@0.7.6, objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, objc2-metal@0.3.2, objc2-quartz-core@0.3.2, objc2-ui-kit@0.3.2, owned_ttf_parser@0.25.1, paste@1.0.15, pastey@0.1.1, pastey@0.2.3, pin-project-internal@1.1.13, pin-project-lite@0.2.17, pin-project@1.1.13, portable-atomic-util@0.2.7, portable-atomic@1.14.0, proc-macro2-diagnostics@0.10.1, proc-macro2@1.0.107, profiling-procmacros@1.0.18, profiling@1.0.18, pulley-interpreter@47.0.2, pulley-macros@47.0.2, quote@1.0.47, r-efi@5.3.0, r-efi@6.0.0, rand@0.10.2, rand@0.9.5, rand_chacha@0.9.0, rand_xorshift@0.4.0, range-alloc@0.1.5, raw-window-handle@0.6.2, resvg@0.45.1, resvg@0.47.0, rustc-hash@2.1.3, rustversion@1.0.23, semver@1.0.28, serde@1.0.229, serde_core@1.0.229, serde_derive@1.0.229, serde_json@1.0.151, serde_repr@0.1.21, shlex@2.0.1, simdutf8@0.1.5, siphasher@1.0.3, spirv@0.4.0+sdk-1.4.341.0, string-interner@0.20.0, svg_fmt@0.4.5, syn@2.0.119, syn@3.0.3, thiserror-impl@1.0.69, thiserror-impl@2.0.19, thiserror@1.0.69, thiserror@2.0.19, tract-extra@0.23.4, tract-transformers@0.23.4, type-map@0.5.1, typed-path@0.12.3, typeid@1.0.3, unicode-ident@1.0.24, ureq-proto@0.6.0, usvg@0.45.1, usvg@0.47.0, utf8-zero@0.8.1, vello@0.9.0, vello_common@0.0.9, vello_cpu@0.0.9, vello_encoding@0.9.0, vello_shaders@0.9.0, wasmtime-internal-component-macro@47.0.2, wasmtime-internal-component-util@47.0.2, wasmtime-internal-core@47.0.2, wasmtime-internal-jit-debug@47.0.2, wasmtime-internal-jit-icache-coherence@47.0.2, wasmtime-internal-versioned-export-macros@47.0.2, wasmtime-internal-wit-bindgen@47.0.2, wgpu-core-deps-apple@29.0.4, wgpu-core-deps-emscripten@29.0.4, wgpu-core-deps-wasm@29.0.4, wgpu-core-deps-windows-linux-android@29.0.4, wgpu-core@29.0.4, wgpu-hal@29.0.4, wgpu-naga-bridge@29.0.4, wgpu-types@29.0.4, wgpu@29.0.4, winapi-i686-pc-windows-gnu@0.4.0, winapi-x86_64-pc-windows-gnu@0.4.0, zstd-safe@7.2.4, zstd-sys@2.0.16+zstd.1.5.7, zune-inflate@0.2.54
 
 ```
 Apache License
@@ -9985,7 +10060,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License (BSD-3-Clause)
 
-Used by: exr@1.74.0, ittapi@0.4.0
+Used by: exr@1.74.2, ittapi@0.4.0
 
 ```
 Copyright (c) <year> <owner>. 
@@ -10213,7 +10288,7 @@ express Statement of Purpose.
 
 ## Community Data License Agreement Permissive 2.0 (CDLA-Permissive-2.0)
 
-Used by: webpki-roots@1.0.8
+Used by: webpki-roots@1.0.9
 
 ```
 # Community Data License Agreement - Permissive - Version 2.0
@@ -10429,7 +10504,7 @@ Used by: uds_windows@1.2.1
 
 ## MIT License (MIT)
 
-Used by: mlua@0.11.6
+Used by: mlua@0.12.0
 
 ```
 Both mlua and rlua are distributed under the MIT license, which is reproduced
@@ -10517,7 +10592,7 @@ IN THE SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: wayland-backend@0.3.15, wayland-client@0.31.14, wayland-cursor@0.31.14, wayland-protocols-experimental@20250721.0.1, wayland-protocols-misc@0.3.12, wayland-protocols-plasma@0.3.12, wayland-protocols-wlr@0.3.12, wayland-protocols@0.32.13, wayland-scanner@0.31.10, wayland-sys@0.31.11
+Used by: wayland-backend@0.3.16, wayland-client@0.31.15, wayland-cursor@0.31.14, wayland-protocols-experimental@20250721.0.1, wayland-protocols-misc@0.3.12, wayland-protocols-plasma@0.3.12, wayland-protocols-wlr@0.3.12, wayland-protocols@0.32.13, wayland-scanner@0.31.11, wayland-sys@0.31.11
 
 ```
 Copyright (c) 2015 Elinor Berger
@@ -10603,7 +10678,7 @@ THE SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: which@8.0.4
+Used by: which@8.0.5
 
 ```
 Copyright (c) 2015 fangyuanziti
@@ -10656,7 +10731,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: redox_syscall@0.4.1, redox_syscall@0.5.18, redox_syscall@0.8.1
+Used by: redox_syscall@0.4.1, redox_syscall@0.5.18, redox_syscall@0.9.0
 
 ```
 Copyright (c) 2017 Redox OS Developers
@@ -10686,7 +10761,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: bytes@1.12.0
+Used by: bytes@1.12.1
 
 ```
 Copyright (c) 2018 Carl Lerche
@@ -10973,7 +11048,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: zbus@5.16.0, zbus_macros@5.16.0, zbus_names@4.3.2, zbus_xml@5.1.1, zvariant@5.12.0, zvariant_derive@5.12.0
+Used by: zbus@5.18.0, zbus_macros@5.18.0, zbus_names@4.3.4, zbus_xml@5.2.1, zvariant@5.13.1, zvariant_derive@5.13.1
 
 ```
 Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
@@ -11054,11 +11129,11 @@ Used by: fax@0.2.7
 ```
 Copyright © 2021 The pdf-rs contributers.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
@@ -11296,7 +11371,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: cfg_aliases@0.2.1
+Used by: cfg_aliases@0.2.2
 
 ```
 MIT License
@@ -11402,7 +11477,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: luajit-src@210.6.6+707c12b
+Used by: luajit-src@210.7.2+b925b3e
 
 ```
 MIT License
@@ -11489,7 +11564,36 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: egui_dock@0.20.0
+Used by: pulp@0.22.3
+
+```
+MIT License
+
+Copyright (c) 2021 sarah
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License (MIT)
+
+Used by: egui_dock@0.20.1
 
 ```
 MIT License
@@ -11546,7 +11650,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: aligned-vec@0.6.4
+Used by: aligned-vec@0.6.4, reborrow@0.5.5
 
 ```
 MIT License
@@ -11575,7 +11679,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: libredox@0.1.17
+Used by: libredox@0.1.18
 
 ```
 MIT License
@@ -11691,7 +11795,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: block2@0.5.1, block2@0.6.2, dispatch@0.2.0, dpi@0.1.2, harfrust@0.5.2, harfrust@0.7.0, libm@0.2.16, lua-src@550.0.0, mlua-sys@0.10.0, nom-language@0.1.0, objc-sys@0.3.5, objc2-app-kit@0.2.2, objc2-encode@4.1.0, objc2-foundation@0.2.2, objc2-foundation@0.3.2, objc2-ui-kit@0.2.2, objc2@0.5.2, objc2@0.6.4, plotters-backend@0.3.7, plotters-svg@0.3.7, plotters@0.3.7, simd_helpers@0.1.0
+Used by: block2@0.5.1, block2@0.6.2, dispatch@0.2.0, dpi@0.1.2, harfrust@0.5.2, harfrust@0.7.0, libm@0.2.16, lua-src@550.1.1, mlua-sys@0.11.0, nom-language@0.1.0, objc-sys@0.3.5, objc2-app-kit@0.2.2, objc2-encode@4.1.0, objc2-foundation@0.2.2, objc2-foundation@0.3.2, objc2-ui-kit@0.2.2, objc2@0.5.2, objc2@0.6.4, plotters-backend@0.3.7, plotters-svg@0.3.7, plotters@0.3.7, pulp-wasm-simd-flag@0.1.1, simd_helpers@0.1.0
 
 ```
 MIT License
@@ -11717,7 +11821,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: simd-adler32@0.3.9
+Used by: simd-adler32@0.3.10
 
 ```
 MIT License
@@ -11804,7 +11908,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: endi@1.1.1, x11-dl@2.21.0, zbus-lockstep-macros@0.5.2, zbus-lockstep@0.5.2, zmij@1.0.21, zvariant_utils@3.4.0
+Used by: endi@1.1.1, x11-dl@2.21.0, zbus-lockstep-macros@0.5.2, zbus-lockstep@0.5.2, zmij@1.0.23, zvariant_utils@3.5.0
 
 ```
 Permission is hereby granted, free of charge, to any
@@ -11835,7 +11939,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: winnow@0.7.15, winnow@1.0.3
+Used by: winnow@0.7.15, winnow@1.0.4
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining
@@ -11947,7 +12051,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: aho-corasick@1.1.4, byteorder-lite@0.1.0, byteorder@1.5.0, memchr@2.8.2, termcolor@1.4.1, walkdir@2.5.0
+Used by: aho-corasick@1.1.4, byteorder-lite@0.1.0, byteorder@1.5.0, memchr@2.8.3, termcolor@1.4.1, walkdir@2.5.0
 
 ```
 The MIT License (MIT)
@@ -11972,6 +12076,34 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
+```
+
+## MIT License (MIT)
+
+Used by: raw-cpuid@11.6.0
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2015 Gerd Zellweger
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## MIT License (MIT)
@@ -12427,7 +12559,7 @@ SOFTWARE.
 
 ## MIT License (MIT)
 
-Used by: quick-xml@0.39.4, quick-xml@0.40.1
+Used by: quick-xml@0.41.0
 
 ```
 The MIT License (MIT)
@@ -12463,11 +12595,11 @@ Used by: loop9@0.1.5
 ```
 © Kornel Lesiński
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
@@ -13554,7 +13686,7 @@ authorization of the copyright holder.
 
 SPDX-License-Identifier: Unicode-3.0
 
--
+—
 
 Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
@@ -13563,7 +13695,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ## zlib License (Zlib)
 
-Used by: zlib-rs@0.6.4
+Used by: zlib-rs@0.6.6
 
 ```
 (C) 2024 Trifecta Tech Foundation 

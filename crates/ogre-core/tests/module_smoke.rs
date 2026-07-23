@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 VisorCraft LLC
 
-//! Smoke test: every declared core module is reachable.
+//! Smoke test: every declared `ogre-core` module is reachable from the crate root.
 
 #[test]
 fn modules_are_declared() {
