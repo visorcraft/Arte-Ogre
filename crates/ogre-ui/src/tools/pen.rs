@@ -6,6 +6,11 @@
 //! anchor closes and commits the path as either a vector layer (default) or
 //! rasterized pixels. Path→Selection converts a closed path to a selection
 //! coverage mask.
+//!
+//! The close threshold comes from [`crate::tools::PointerEvent::hit_radius_doc`]
+//! and the click-vs-drag dead zone from
+//! [`crate::tools::PointerEvent::drag_threshold_doc`]; the canvas keeps both
+//! constant on screen at any zoom.
 
 use glam::Vec2;
 use ogre_core::{
@@ -16,12 +21,6 @@ use ogre_vector::{bezpath_to_polygon, rasterize_bezpath, Fill, Stroke};
 
 use crate::tools::vector_commit::{buffer_to_edits, localize_path};
 use crate::tools::{Phase, PointerEvent, Tool, VectorCommitMode};
-
-/// Click within this many document pixels of the first anchor closes the path.
-const CLOSE_THRESHOLD_PX: i32 = 6;
-
-/// Minimum drag distance (document px) before a click becomes a drag.
-const DRAG_THRESHOLD_PX: i32 = 3;
 
 /// Pen tool: build a bezier path, commit as vector or raster pixels.
 #[derive(Debug)]
@@ -375,7 +374,7 @@ impl Tool for PenTool {
                     if let Some(first) = self.first_anchor() {
                         let dx = ev.doc_pos.x as f64 - first.x;
                         let dy = ev.doc_pos.y as f64 - first.y;
-                        if (dx * dx + dy * dy).sqrt() <= CLOSE_THRESHOLD_PX as f64 {
+                        if (dx * dx + dy * dy).sqrt() <= f64::from(ev.hit_radius_doc) {
                             self.path.close_path();
                             return self.commit(doc);
                         }
@@ -391,9 +390,9 @@ impl Tool for PenTool {
             Phase::Up => {
                 let start = self.drag_start.take()?;
                 self.cursor = Some(ev.doc_pos);
-                let drag_dist = (ev.doc_pos - start).length_squared();
+                let drag_dist = (ev.doc_pos - start).as_vec2().length_squared();
                 let pt = kurbo::Point::new(start.x as f64, start.y as f64);
-                if drag_dist <= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX {
+                if drag_dist <= ev.drag_threshold_doc * ev.drag_threshold_doc {
                     // Click: corner anchor.
                     if self.is_empty() {
                         self.path.move_to(pt);

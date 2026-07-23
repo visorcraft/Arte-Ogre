@@ -17,10 +17,6 @@ use ogre_vector::{bezpath_to_polygon, ellipse_bezpath, rasterize_bezpath, Fill, 
 use crate::tools::vector_commit::{buffer_to_edits, localize_path};
 use crate::tools::{Phase, PointerEvent, Tool, VectorCommitMode};
 
-/// Click within this many document pixels of the first polygon vertex closes
-/// the path.
-const POLY_CLOSE_THRESHOLD_PX: i32 = 6;
-
 /// Which shape a [`ShapeTool`] draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShapeKind {
@@ -361,8 +357,9 @@ impl ShapeTool {
                 if self.poly_pts.is_empty() {
                     self.poly_pts.push(ev.doc_pos);
                 } else if let Some(&first) = self.poly_pts.first() {
-                    let near_start = (ev.doc_pos - first).length_squared()
-                        <= POLY_CLOSE_THRESHOLD_PX * POLY_CLOSE_THRESHOLD_PX;
+                    let radius = ev.hit_radius_doc;
+                    let near_start =
+                        (ev.doc_pos - first).as_vec2().length_squared() <= radius * radius;
                     if near_start && self.poly_pts.len() >= 3 {
                         return self.commit_polygon(doc);
                     } else {

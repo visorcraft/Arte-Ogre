@@ -10,9 +10,6 @@ use ogre_core::{EditVectorCmd, VectorData};
 
 use crate::tools::{Phase, PointerEvent, Tool};
 
-/// Click within this many document pixels of a vertex selects it.
-const VERTEX_HIT_RADIUS_PX: i32 = 8;
-
 /// Path Select: click on a vector layer and drag to translate all paths.
 #[derive(Debug, Default)]
 pub struct PathSelectTool {
@@ -118,21 +115,21 @@ impl DirectSelectTool {
         Self::default()
     }
 
-    /// Find the closest vertex to `doc_pos` within the hit radius, returning
-    /// `(path_index, vertex_index)`.
+    /// Find the closest vertex to `doc_pos` within `hit_radius` document
+    /// pixels, returning `(path_index, vertex_index)`.
     fn hit_test(
         data: &VectorData,
         doc_pos: glam::IVec2,
         offset: glam::IVec2,
+        hit_radius: f32,
     ) -> Option<(usize, usize)> {
         let mut best: Option<(usize, usize, i32)> = None;
+        let max_d2 = (hit_radius * hit_radius) as i32;
         for (pi, path) in data.paths.iter().enumerate() {
             for (vi, &v) in path.vertices.iter().enumerate() {
                 let doc_v = v + offset;
                 let d2 = (doc_v - doc_pos).length_squared();
-                if d2 <= VERTEX_HIT_RADIUS_PX * VERTEX_HIT_RADIUS_PX
-                    && best.map(|(_, _, bd2)| d2 < bd2).unwrap_or(true)
-                {
+                if d2 <= max_d2 && best.map(|(_, _, bd2)| d2 < bd2).unwrap_or(true) {
                     best = Some((pi, vi, d2));
                 }
             }
@@ -156,7 +153,7 @@ impl Tool for DirectSelectTool {
                 }
                 let data = layer.vector_data()?;
                 let offset = layer.offset;
-                let hit = Self::hit_test(data, ev.doc_pos, offset);
+                let hit = Self::hit_test(data, ev.doc_pos, offset, ev.hit_radius_doc);
                 hit?;
                 self.layer = Some(id);
                 self.selected = hit;
@@ -302,9 +299,19 @@ mod tests {
         let doc = doc_with_vector();
         let layer = doc.layer(doc.active.unwrap()).unwrap();
         let data = layer.vector_data().unwrap();
-        let hit = DirectSelectTool::hit_test(data, glam::IVec2::new(11, 11), glam::IVec2::ZERO);
+        let hit = DirectSelectTool::hit_test(
+            data,
+            glam::IVec2::new(11, 11),
+            glam::IVec2::ZERO,
+            crate::tools::HIT_RADIUS_SCREEN,
+        );
         assert_eq!(hit, Some((0, 0)));
-        let miss = DirectSelectTool::hit_test(data, glam::IVec2::new(90, 90), glam::IVec2::ZERO);
+        let miss = DirectSelectTool::hit_test(
+            data,
+            glam::IVec2::new(90, 90),
+            glam::IVec2::ZERO,
+            crate::tools::HIT_RADIUS_SCREEN,
+        );
         assert!(miss.is_none());
     }
 

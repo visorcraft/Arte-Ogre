@@ -747,6 +747,22 @@ pub enum Phase {
     Up,
 }
 
+/// Hit-target radius in logical screen pixels for pointer interactions that
+/// grab small on-canvas targets (transform handles, polygon-lasso/pen/shape
+/// close vertices, Direct Select anchors). The canvas converts it to document
+/// pixels from the current zoom and carries it on every [`PointerEvent`] as
+/// `hit_radius_doc`, so hit targets are a constant size on screen at any
+/// zoom — a fixed document-pixel radius shrinks to nothing zoomed out and
+/// misfires zoomed in.
+pub const HIT_RADIUS_SCREEN: f32 = 8.0;
+
+/// Click-vs-drag dead zone in logical screen pixels: a press-release whose
+/// total travel is within this distance counts as a click. Deliberately much
+/// smaller than [`HIT_RADIUS_SCREEN`] — a dead zone sized like a hit target
+/// would swallow short, intentional drags (e.g. pulling a short bezier handle
+/// with the Pen). Carried on every [`PointerEvent`] as `drag_threshold_doc`.
+pub const DRAG_THRESHOLD_SCREEN: f32 = 3.0;
+
 /// A pointer event translated into document-space coordinates.
 #[derive(Debug, Clone, Copy)]
 pub struct PointerEvent {
@@ -758,16 +774,28 @@ pub struct PointerEvent {
     pub modifiers: egui::Modifiers,
     /// Normalised tablet/touch pressure in `[0, 1]`.  Mouse input reports `1.0`.
     pub pressure: f32,
+    /// Hit-target radius in document pixels, derived from
+    /// [`HIT_RADIUS_SCREEN`] and the current zoom by the canvas. Tools that
+    /// grab small targets use this instead of a fixed document-pixel
+    /// threshold.
+    pub hit_radius_doc: f32,
+    /// Click-vs-drag dead zone in document pixels, derived from
+    /// [`DRAG_THRESHOLD_SCREEN`] and the current zoom by the canvas.
+    pub drag_threshold_doc: f32,
 }
 
 impl PointerEvent {
-    /// Create a pointer event with default pressure (`1.0`).
+    /// Create a pointer event with default pressure (`1.0`) and the
+    /// screen-constant radii at 100% zoom (the right values for unit tests,
+    /// which have no viewport).
     pub const fn new(doc_pos: IVec2, phase: Phase, modifiers: egui::Modifiers) -> Self {
         Self {
             doc_pos,
             phase,
             modifiers,
             pressure: 1.0,
+            hit_radius_doc: HIT_RADIUS_SCREEN,
+            drag_threshold_doc: DRAG_THRESHOLD_SCREEN,
         }
     }
 }
@@ -1459,6 +1487,12 @@ mod tests {
                 "{k:?} icon has no white fill/stroke"
             );
         }
+    }
+
+    #[test]
+    fn pointer_event_defaults_hit_radius_to_screen_constant() {
+        let ev = PointerEvent::new(IVec2::ZERO, Phase::Down, egui::Modifiers::NONE);
+        assert_eq!(ev.hit_radius_doc, HIT_RADIUS_SCREEN);
     }
 
     #[test]

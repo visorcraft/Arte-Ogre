@@ -354,12 +354,19 @@ fn forward_pointer_events(
 
     let modifiers = ui.input(|i| i.modifiers);
 
+    // Hit-target radii (transform handles, close vertices, Direct Select
+    // anchors) and the click-vs-drag dead zone are screen-space constants:
+    // convert once to document pixels from the current zoom and carry on
+    // every pointer event.
+    let hit_radius_doc = crate::tools::HIT_RADIUS_SCREEN * ppp / app.state.viewport().zoom;
+    let drag_threshold_doc = crate::tools::DRAG_THRESHOLD_SCREEN * ppp / app.state.viewport().zoom;
+
     // Polygon Lasso: each click places a vertex and the shape becomes a *live*
     // selection (marching ants) immediately — no separate "close" step. A
     // double-click (or Enter, handled by the shell) finalizes; a click near the
     // first vertex also ends the path.
     if app.state.tool_manager.active() == ToolKind::PolygonLasso {
-        handle_polygon_lasso(app, response, doc_pos, modifiers);
+        handle_polygon_lasso(app, response, doc_pos, modifiers, hit_radius_doc);
         return;
     }
 
@@ -381,15 +388,6 @@ fn forward_pointer_events(
         })
         .unwrap_or(doc_pos);
 
-    // Free Transform hit-tests its handles in document space, but the usable
-    // click radius is a screen-space constant: hand it the zoom-adjusted
-    // radius before dispatching.
-    let ft_radius = crate::tools::transform::FreeTransformTool::HANDLE_RADIUS_SCREEN * ppp
-        / app.state.viewport().zoom;
-    if let Some(tool) = app.state.tool_manager.free_transform_tool_mut() {
-        tool.set_handle_radius_doc(ft_radius);
-    }
-
     let doc = app.state.doc().clone();
     let mut dispatch_phase = |phase, pos| {
         if let Some(cmd) = app.state.tool_manager.on_pointer(
@@ -399,6 +397,8 @@ fn forward_pointer_events(
                 phase,
                 modifiers,
                 pressure,
+                hit_radius_doc,
+                drag_threshold_doc,
             },
         ) {
             let _ = dispatch::dispatch(&mut app.state, cmd);
@@ -430,6 +430,7 @@ fn handle_polygon_lasso(
     response: &egui::Response,
     doc_pos: IVec2,
     modifiers: egui::Modifiers,
+    hit_radius_doc: f32,
 ) {
     let doc = app.state.doc().clone();
     // Finalize the path on a double-click (the live selection stays committed).
@@ -442,9 +443,9 @@ fn handle_polygon_lasso(
         return;
     }
     // Place a vertex (or end the path if it clicked back near the first vertex).
-    app.state
-        .tool_manager
-        .on_pointer(&doc, PointerEvent::new(doc_pos, Phase::Down, modifiers));
+    let mut ev = PointerEvent::new(doc_pos, Phase::Down, modifiers);
+    ev.hit_radius_doc = hit_radius_doc;
+    app.state.tool_manager.on_pointer(&doc, ev);
     sync_polygon_live_selection(app);
 }
 

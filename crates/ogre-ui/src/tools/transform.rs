@@ -201,9 +201,6 @@ pub struct FreeTransformTool {
     /// incremental transform on top of it, so successive drags compose instead
     /// of resetting the preview.
     base_affine: Affine2,
-    /// Handle hit radius in document pixels. Updated from the current zoom via
-    /// [`Self::set_handle_radius_doc`] so the radius is constant on screen.
-    handle_radius_doc: f32,
     /// Source document-space bounds corners (TL, TR, BR, BL) for
     /// Distort/Perspective/Warp.
     src_quad: [IVec2; 4],
@@ -351,7 +348,6 @@ impl Default for FreeTransformTool {
             pointer_mode: PointerMode::Translate,
             affine: Affine2::IDENTITY,
             base_affine: Affine2::IDENTITY,
-            handle_radius_doc: Self::HANDLE_RADIUS_DOC,
             src_quad: [IVec2::ZERO; 4],
             dst_quad: [IVec2::ZERO; 4],
             warp_grid: ogre_core::resample::WarpGrid::identity(
@@ -365,14 +361,6 @@ impl Default for FreeTransformTool {
 }
 
 impl FreeTransformTool {
-    /// Fallback handle hit radius in document pixels, used until the canvas
-    /// reports the zoom-dependent radius.
-    const HANDLE_RADIUS_DOC: f32 = 6.0;
-
-    /// Handle hit radius in logical screen pixels; the canvas converts this to
-    /// document pixels each frame via [`Self::set_handle_radius_doc`].
-    pub const HANDLE_RADIUS_SCREEN: f32 = 8.0;
-
     /// Create a new free-transform tool with no active transform.
     pub fn new() -> Self {
         Self::default()
@@ -381,13 +369,6 @@ impl FreeTransformTool {
     /// True if the tool has an active transform preview.
     pub fn is_active(&self) -> bool {
         self.layer.is_some() && self.start.is_some()
-    }
-
-    /// Set the handle hit radius in document pixels. The canvas derives this
-    /// from the current zoom before dispatching pointer events so the radius
-    /// is constant on screen at any zoom level.
-    pub fn set_handle_radius_doc(&mut self, radius: f32) {
-        self.handle_radius_doc = radius.max(1.0);
     }
 
     /// Mutable access to the sidebar-selected transform mode.
@@ -636,7 +617,7 @@ impl Tool for FreeTransformTool {
                     let (corners, midpoints) = rect_handles(doc_bounds);
                     let corners_t = corners.map(|c| self.affine.transform_point2(c));
                     let midpoints_t = midpoints.map(|(m, a)| (self.affine.transform_point2(m), a));
-                    let radius = self.handle_radius_doc;
+                    let radius = ev.hit_radius_doc;
 
                     match self.transform_mode {
                         FreeTransformMode::ScaleRotate => {
@@ -1369,13 +1350,14 @@ mod tests {
         let mut state = AppState::new_document(200, 200);
         let id = state.doc().active.unwrap();
         // Use a larger block so the right-edge skew handle is reachable without
-        // overlapping a corner handle at the 6-pixel radius.
+        // overlapping a corner handle within the event's hit radius
+        // (HIT_RADIUS_SCREEN = 8 doc px at the 100% zoom used by tests).
         fill_red_rect(&mut state.tabs[state.active_tab].doc, id, 20, 20);
         state.tool_manager.set_tool(ToolKind::FreeTransform);
 
         // Layer bounds are half-open (0,0)-(20,20), centre (10,10). (26,10) is
-        // within 6 pixels of the right edge midpoint (20,10) and well away
-        // from the corners, so it triggers skew Y. Drag down by 2 pixels.
+        // within the hit radius of the right edge midpoint (20,10) and well
+        // away from the corners, so it triggers skew Y. Drag down by 2 pixels.
         send(
             &mut state.tool_manager,
             &state.tabs[state.active_tab].doc,

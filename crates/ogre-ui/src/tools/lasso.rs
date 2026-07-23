@@ -17,10 +17,6 @@ use glam::IVec2;
 use crate::panels::canvas::doc_to_screen;
 use crate::tools::{Phase, PointerEvent, Tool};
 
-/// A click within this many document pixels of the first polygon vertex closes
-/// the path.
-const CLOSE_THRESHOLD_PX: i32 = 5;
-
 /// Minimum squared distance between successive freehand samples.
 const FREEHAND_SAMPLE_DIST_SQ: i32 = 4;
 
@@ -72,8 +68,8 @@ impl Tool for PolygonLassoTool {
             if self.points.is_empty() {
                 self.points.push(ev.doc_pos);
             } else if let Some(&first) = self.points.first() {
-                let near_start = (ev.doc_pos - first).length_squared()
-                    <= CLOSE_THRESHOLD_PX * CLOSE_THRESHOLD_PX;
+                let radius = ev.hit_radius_doc;
+                let near_start = (ev.doc_pos - first).as_vec2().length_squared() <= radius * radius;
                 if near_start && self.points.len() >= MIN_LASSO_POINTS {
                     self.points.clear();
                 } else if self.points.len() < MAX_POLYGON_POINTS {
@@ -280,6 +276,34 @@ mod tests {
         // Clicking back near the first vertex ends the path.
         polygon_event(&mut tool, doc, IVec2::new(1, 1), Phase::Down);
         assert!(tool.live_selection().is_none(), "path ended on close");
+    }
+
+    #[test]
+    fn polygon_lasso_close_uses_event_hit_radius() {
+        let state = AppState::new_document(2000, 1500);
+        let doc = &state.tabs[state.active_tab].doc;
+        let mut tool = PolygonLassoTool::new();
+        for p in [IVec2::new(0, 0), IVec2::new(30, 0), IVec2::new(30, 30)] {
+            polygon_event(&mut tool, doc, p, Phase::Down);
+        }
+        assert!(tool.live_selection().is_some(), "triangle is live");
+
+        // 9 px from the first vertex: beyond the default event radius (8), so
+        // the click adds a vertex instead of closing.
+        polygon_event(&mut tool, doc, IVec2::new(9, 0), Phase::Down);
+        assert!(
+            tool.live_selection().is_some(),
+            "outside the hit radius: path keeps building"
+        );
+
+        // 6 px from the first vertex: within the event radius (but beyond the
+        // old fixed 5 doc px threshold), so the path closes — proof the tool
+        // honours the radius the event carries, not a hardcoded constant.
+        polygon_event(&mut tool, doc, IVec2::new(0, 6), Phase::Down);
+        assert!(
+            tool.live_selection().is_none(),
+            "inside the hit radius: closed"
+        );
     }
 
     #[test]
