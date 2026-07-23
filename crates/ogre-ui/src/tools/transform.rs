@@ -161,15 +161,24 @@ impl Tool for MoveTool {
 
 /// Free-transform a raster layer with a live affine/projective/warp preview.
 ///
-/// Primary-button drag starts a transform. The sidebar-selected
-/// [`FreeTransformMode`] determines the handle set and interaction:
-/// - `ScaleRotate`: dragging inside the layer bounds translates; near a corner
+/// Primary-button drag starts (or continues) a transform. The
+/// sidebar-selected [`FreeTransformMode`] determines the handle set and
+/// interaction:
+/// - `ScaleRotate`: dragging inside the frame translates; near a corner
 ///   scales uniformly; near an edge midpoint skews; elsewhere rotates.
 /// - `Skew`: dragging edge midpoints skews (other locations translate).
 /// - `Distort`/`Perspective`: drag the four corner handles independently.
 /// - `Warp`: drag the points of a 4x4 control grid.
 ///
-/// Pressing Enter commits the previewed transform.
+/// Successive drags compose: each drag builds an incremental transform on top
+/// of the current preview rather than resetting it. Pressing Enter commits
+/// the previewed transform; Escape cancels it.
+///
+/// Known limitations: a skew drag composes along the world X/Y axis tagged
+/// when the drag starts, so skewing an already-rotated preview shears along
+/// the nearest world axis rather than exactly along the rotated edge; and the
+/// sidebar numeric fields decompose/recompose as translate-rotate-scale, so
+/// editing them drops any skew from the preview.
 #[derive(Debug)]
 pub struct FreeTransformTool {
     /// Layer being transformed, if any.
@@ -188,6 +197,13 @@ pub struct FreeTransformTool {
     pointer_mode: PointerMode,
     /// Preview affine: source document space -> destination document space.
     affine: Affine2,
+    /// Preview affine captured at pointer-down; each drag builds an
+    /// incremental transform on top of it, so successive drags compose instead
+    /// of resetting the preview.
+    base_affine: Affine2,
+    /// Handle hit radius in document pixels. Updated from the current zoom via
+    /// [`Self::set_handle_radius_doc`] so the radius is constant on screen.
+    handle_radius_doc: f32,
     /// Source document-space bounds corners (TL, TR, BR, BL) for
     /// Distort/Perspective/Warp.
     src_quad: [IVec2; 4],
@@ -208,6 +224,121 @@ enum Handle {
     GridPoint(usize),
 }
 
+/// Corner and edge-midpoint handle positions of a document bounds rectangle,
+/// using the half-open corner to match the wireframe drawn by `draw_overlay`.
+fn rect_handles(bounds: ogre_core::Rect) -> ([Vec2; 4], [(Vec2, Axis); 4]) {
+    let min = Vec2::new(bounds.x as f32, bounds.y as f32);
+    let max = Vec2::new(
+        (bounds.x + bounds.w as i32) as f32,
+        (bounds.y + bounds.h as i32) as f32,
+    );
+    let corners = [min, Vec2::new(max.x, min.y), max, Vec2::new(min.x, max.y)];
+    let midpoints = [
+        (Vec2::new((min.x + max.x) * 0.5, min.y), Axis::X), // top
+        (Vec2::new((min.x + max.x) * 0.5, max.y), Axis::X), // bottom
+        (Vec2::new(min.x, (min.y + max.y) * 0.5), Axis::Y), // left
+        (Vec2::new(max.x, (min.y + max.y) * 0.5), Axis::Y), // right
+    ];
+    (corners, midpoints)
+}
+
+/// True if `p` is inside the convex quad `q` (corners in winding order).
+fn quad_contains(q: &[Vec2; 4], p: Vec2) -> bool {
+    let mut sign = 0_i32;
+    for i in 0..4 {
+        let (a, b) = (q[i], q[(i + 1) % 4]);
+        let s = (b - a).perp_dot(p - a).signum() as i32;
+        if s != 0 {
+            if sign == 0 {
+                sign = s;
+            } else if sign != s {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Classify a pointer position against the *current* handle positions.
+///
+/// Handles win over the interior: the handle squares sit on the frame's
+/// corners and edge midpoints, so most of their clickable area is inside the
+/// frame — testing the interior first (the old bug) misclassified nearly
+/// every handle press as Translate.
+///
+/// - Within `handle_radius` of a corner -> Scale.
+/// - Within `handle_radius` of an edge midpoint -> Skew along that edge.
+/// - Inside the frame -> Translate.
+/// - Otherwise -> Rotate.
+fn classify_by_handles(
+    corners: &[Vec2; 4],
+    midpoints: &[(Vec2, Axis); 4],
+    pos: IVec2,
+    handle_radius: f32,
+) -> PointerMode {
+    let pos_f = pos.as_vec2();
+    for &c in corners {
+        if (pos_f - c).length() <= handle_radius {
+            return PointerMode::Scale;
+        }
+    }
+    for &(m, axis) in midpoints {
+        if (pos_f - m).length() <= handle_radius {
+            return PointerMode::Skew { axis };
+        }
+    }
+    if quad_contains(corners, pos_f) {
+        return PointerMode::Translate;
+    }
+    PointerMode::Rotate
+}
+
+/// Skew-mode variant of [`classify_by_handles`]: near a midpoint skews, inside
+/// translates, and anywhere else skews along the nearest edge's axis.
+fn classify_skew_by_handles(
+    corners: &[Vec2; 4],
+    midpoints: &[(Vec2, Axis); 4],
+    pos: IVec2,
+    handle_radius: f32,
+) -> PointerMode {
+    let pos_f = pos.as_vec2();
+    for &(m, axis) in midpoints {
+        if (pos_f - m).length() <= handle_radius {
+            return PointerMode::Skew { axis };
+        }
+    }
+    if quad_contains(corners, pos_f) {
+        return PointerMode::Translate;
+    }
+    // Default to the nearest edge midpoint.
+    let mut best = None;
+    let mut best_d2 = f32::INFINITY;
+    for &(m, axis) in midpoints {
+        let d2 = (pos_f - m).length_squared();
+        if d2 < best_d2 {
+            best_d2 = d2;
+            best = Some(PointerMode::Skew { axis });
+        }
+    }
+    best.unwrap_or(PointerMode::Translate)
+}
+
+/// Classify a pointer position relative to a document bounds rectangle.
+/// See [`classify_by_handles`] for the rules.
+#[cfg(test)]
+fn classify_pointer(bounds: ogre_core::Rect, pos: IVec2, handle_radius: f32) -> PointerMode {
+    let (corners, midpoints) = rect_handles(bounds);
+    classify_by_handles(&corners, &midpoints, pos, handle_radius)
+}
+
+/// Classify a pointer for Skew mode against a document bounds rectangle.
+/// See [`classify_skew_by_handles`] for the rules.
+#[cfg(test)]
+fn classify_skew(bounds: ogre_core::Rect, pos: IVec2, handle_radius: f32) -> PointerMode {
+    let (corners, midpoints) = rect_handles(bounds);
+    classify_skew_by_handles(&corners, &midpoints, pos, handle_radius)
+}
+
 impl Default for FreeTransformTool {
     fn default() -> Self {
         Self {
@@ -219,6 +350,8 @@ impl Default for FreeTransformTool {
             transform_mode: FreeTransformMode::ScaleRotate,
             pointer_mode: PointerMode::Translate,
             affine: Affine2::IDENTITY,
+            base_affine: Affine2::IDENTITY,
+            handle_radius_doc: Self::HANDLE_RADIUS_DOC,
             src_quad: [IVec2::ZERO; 4],
             dst_quad: [IVec2::ZERO; 4],
             warp_grid: ogre_core::resample::WarpGrid::identity(
@@ -232,8 +365,13 @@ impl Default for FreeTransformTool {
 }
 
 impl FreeTransformTool {
-    /// Radius in document pixels used to detect corner and edge handles.
+    /// Fallback handle hit radius in document pixels, used until the canvas
+    /// reports the zoom-dependent radius.
     const HANDLE_RADIUS_DOC: f32 = 6.0;
+
+    /// Handle hit radius in logical screen pixels; the canvas converts this to
+    /// document pixels each frame via [`Self::set_handle_radius_doc`].
+    pub const HANDLE_RADIUS_SCREEN: f32 = 8.0;
 
     /// Create a new free-transform tool with no active transform.
     pub fn new() -> Self {
@@ -243,6 +381,13 @@ impl FreeTransformTool {
     /// True if the tool has an active transform preview.
     pub fn is_active(&self) -> bool {
         self.layer.is_some() && self.start.is_some()
+    }
+
+    /// Set the handle hit radius in document pixels. The canvas derives this
+    /// from the current zoom before dispatching pointer events so the radius
+    /// is constant on screen at any zoom level.
+    pub fn set_handle_radius_doc(&mut self, radius: f32) {
+        self.handle_radius_doc = radius.max(1.0);
     }
 
     /// Mutable access to the sidebar-selected transform mode.
@@ -269,40 +414,45 @@ impl FreeTransformTool {
         ))
     }
 
-    /// Build a translate affine from the drag delta.
+    /// Build a translate affine from the drag delta, composed onto the
+    /// pointer-down base affine.
     fn update_translate(&mut self) {
         let Some(start) = self.start else { return };
         let delta = self.current.as_vec2() - start.as_vec2();
-        self.affine = Affine2::from_translation(delta);
+        self.affine = Affine2::from_translation(delta) * self.base_affine;
     }
 
-    /// Build a uniform scale affine around `center` from the drag distance.
+    /// Build a uniform scale affine around the current (base-transformed)
+    /// centre from the drag distance ratio, composed onto the base affine.
     fn update_scale(&mut self) {
         let Some(start) = self.start else { return };
-        let start_vec = start.as_vec2();
-        let start_dist = (start_vec - self.center).length();
+        let center = self.base_affine.transform_point2(self.center);
+        let start_dist = (start.as_vec2() - center).length();
         if start_dist < 1e-4 {
-            self.affine = Affine2::IDENTITY;
+            self.affine = self.base_affine;
             return;
         }
-        let current_dist = (self.current.as_vec2() - self.center).length();
+        let current_dist = (self.current.as_vec2() - center).length();
         let scale = current_dist / start_dist;
-        self.affine = scale_around(self.center, scale);
+        self.affine = scale_around(center, scale) * self.base_affine;
     }
 
-    /// Build a rotation affine around `center` from the angle delta.
+    /// Build a rotation affine around the current centre from the angle delta,
+    /// composed onto the base affine.
     fn update_rotate(&mut self) {
-        let current_vec = self.current.as_vec2() - self.center;
+        let center = self.base_affine.transform_point2(self.center);
+        let current_vec = self.current.as_vec2() - center;
         if current_vec.length() < 1e-4 {
-            self.affine = Affine2::IDENTITY;
+            self.affine = self.base_affine;
             return;
         }
         let current_angle = current_vec.y.atan2(current_vec.x);
         let delta = current_angle - self.start_angle;
-        self.affine = rotate_around(self.center, delta);
+        self.affine = rotate_around(center, delta) * self.base_affine;
     }
 
-    /// Build a skew affine around `center` from the drag delta.
+    /// Build a skew affine around the current centre from the drag delta,
+    /// composed onto the base affine.
     ///
     /// The shear coefficient is computed so that the dragged handle moves by
     /// exactly the pointer delta: for horizontal shear the displacement is
@@ -313,7 +463,8 @@ impl FreeTransformTool {
         let current_vec = self.current.as_vec2();
         let delta = current_vec - start_vec;
 
-        let relative = start_vec - self.center;
+        let center = self.base_affine.transform_point2(self.center);
+        let relative = start_vec - center;
         let denom = match axis {
             Axis::X => relative.y,
             Axis::Y => relative.x,
@@ -329,7 +480,7 @@ impl FreeTransformTool {
         };
         // Clamp to a reasonable range to keep the transform numerically stable.
         let coeff = coeff.clamp(-2.0, 2.0);
-        self.affine = skew_around(self.center, axis, coeff);
+        self.affine = skew_around(center, axis, coeff) * self.base_affine;
     }
 
     /// Return the integer translation if `affine` is a pure integer
@@ -427,6 +578,7 @@ impl FreeTransformTool {
         self.start = None;
         self.current = IVec2::ZERO;
         self.affine = Affine2::IDENTITY;
+        self.base_affine = Affine2::IDENTITY;
         self.pointer_mode = PointerMode::Translate;
         self.handle = None;
     }
@@ -446,45 +598,66 @@ impl Tool for FreeTransformTool {
                     return None;
                 }
 
+                // Switching layers mid-preview discards the old preview: it was
+                // computed for the previous layer's bounds and must never
+                // commit (or compose) onto a different layer.
+                if self.layer.is_some() && self.layer != Some(id) {
+                    self.reset_preview();
+                }
+
+                // A press while a preview is already active continues editing
+                // it: the centre and handle quads stay put and the new drag
+                // composes onto the current affine instead of resetting it.
+                let fresh = !self.is_active();
                 self.layer = Some(id);
                 self.start = Some(ev.doc_pos);
                 self.current = ev.doc_pos;
-                self.affine = Affine2::IDENTITY;
+                self.base_affine = self.affine;
                 self.handle = None;
 
                 if let Some(bounds) = layer.buffer().and_then(|b| b.exact_bounds()) {
                     let min = IVec2::new(bounds.x, bounds.y) + layer.offset;
                     let doc_bounds = ogre_core::Rect::new(min.x, min.y, bounds.w, bounds.h);
-                    self.init_handles(doc_bounds);
+                    if fresh {
+                        self.init_handles(doc_bounds);
 
-                    // Use the half-open geometric centre so it matches the
-                    // wireframe corners drawn by `draw_overlay`.
-                    self.center = min.as_vec2() + Vec2::new(bounds.w as f32, bounds.h as f32) * 0.5;
+                        // Use the half-open geometric centre so it matches the
+                        // wireframe corners drawn by `draw_overlay`.
+                        self.center =
+                            min.as_vec2() + Vec2::new(bounds.w as f32, bounds.h as f32) * 0.5;
+                    }
 
-                    let start_vec = ev.doc_pos.as_vec2();
-                    let relative = start_vec - self.center;
+                    let center_t = self.affine.transform_point2(self.center);
+                    let relative = ev.doc_pos.as_vec2() - center_t;
                     self.start_angle = relative.y.atan2(relative.x);
+
+                    // Hit-test against the handle positions as drawn (i.e. with
+                    // the current preview affine applied).
+                    let (corners, midpoints) = rect_handles(doc_bounds);
+                    let corners_t = corners.map(|c| self.affine.transform_point2(c));
+                    let midpoints_t = midpoints.map(|(m, a)| (self.affine.transform_point2(m), a));
+                    let radius = self.handle_radius_doc;
 
                     match self.transform_mode {
                         FreeTransformMode::ScaleRotate => {
                             self.pointer_mode =
-                                classify_pointer(doc_bounds, ev.doc_pos, Self::HANDLE_RADIUS_DOC);
+                                classify_by_handles(&corners_t, &midpoints_t, ev.doc_pos, radius);
                         }
                         FreeTransformMode::Skew => {
-                            self.pointer_mode =
-                                classify_skew(doc_bounds, ev.doc_pos, Self::HANDLE_RADIUS_DOC);
+                            self.pointer_mode = classify_skew_by_handles(
+                                &corners_t,
+                                &midpoints_t,
+                                ev.doc_pos,
+                                radius,
+                            );
                         }
                         FreeTransformMode::Distort | FreeTransformMode::Perspective => {
-                            if let Some(i) =
-                                self.nearest_corner(ev.doc_pos, Self::HANDLE_RADIUS_DOC)
-                            {
+                            if let Some(i) = self.nearest_corner(ev.doc_pos, radius) {
                                 self.handle = Some(Handle::Corner(i));
                             }
                         }
                         FreeTransformMode::Warp => {
-                            if let Some(i) =
-                                self.nearest_grid_point(ev.doc_pos, Self::HANDLE_RADIUS_DOC)
-                            {
+                            if let Some(i) = self.nearest_grid_point(ev.doc_pos, radius) {
                                 self.handle = Some(Handle::GridPoint(i));
                             }
                         }
@@ -544,7 +717,12 @@ impl Tool for FreeTransformTool {
         self.start = None;
         self.handle = None;
 
-        let layer_ref = doc.layer(layer).ok()?;
+        let Some(layer_ref) = doc.layer(layer).ok() else {
+            // The layer vanished mid-preview (e.g. deleted): drop the preview
+            // state so the next press does not inherit a ghost transform.
+            self.reset_preview();
+            return None;
+        };
         if !layer_ref.is_raster() || layer_ref.locked {
             self.reset_preview();
             return None;
@@ -554,6 +732,7 @@ impl Tool for FreeTransformTool {
             FreeTransformMode::ScaleRotate | FreeTransformMode::Skew => {
                 let affine = self.affine;
                 self.affine = Affine2::IDENTITY;
+                self.base_affine = Affine2::IDENTITY;
 
                 if !affine.is_finite() || affine.matrix2.determinant().abs() <= 1e-6 {
                     return None;
@@ -782,6 +961,8 @@ impl FreeTransformTool {
             * Affine2::from_angle(rot)
             * Affine2::from_scale(Vec2::splat(scale))
             * Affine2::from_translation(-center);
+        // Subsequent drags compose onto the edited value, not the previous one.
+        self.base_affine = self.affine;
     }
 }
 
@@ -816,88 +997,6 @@ fn skew_around(center: Vec2, axis: Axis, coeff: f32) -> Affine2 {
         )),
     };
     Affine2::from_translation(center) * shear * Affine2::from_translation(-center)
-}
-
-/// Classify a pointer position relative to a document bounds rectangle.
-///
-/// - Inside bounds -> Translate.
-/// - Within `handle_radius` of a corner -> Scale.
-/// - Within `handle_radius` of an edge midpoint -> Skew along that edge.
-/// - Otherwise -> Rotate.
-fn classify_pointer(bounds: ogre_core::Rect, pos: IVec2, handle_radius: f32) -> PointerMode {
-    let pos_f = pos.as_vec2();
-    let min = Vec2::new(bounds.x as f32, bounds.y as f32);
-    // Use the half-open corner for handle placement to match the wireframe
-    // drawn by `draw_overlay`.
-    let max = Vec2::new(
-        (bounds.x + bounds.w as i32) as f32,
-        (bounds.y + bounds.h as i32) as f32,
-    );
-
-    if bounds.contains(pos) {
-        return PointerMode::Translate;
-    }
-
-    let corners = [min, Vec2::new(max.x, min.y), max, Vec2::new(min.x, max.y)];
-    for c in corners {
-        if (pos_f - c).length() <= handle_radius {
-            return PointerMode::Scale;
-        }
-    }
-
-    let midpoints = [
-        (Vec2::new((min.x + max.x) * 0.5, min.y), Axis::X), // top
-        (Vec2::new((min.x + max.x) * 0.5, max.y), Axis::X), // bottom
-        (Vec2::new(min.x, (min.y + max.y) * 0.5), Axis::Y), // left
-        (Vec2::new(max.x, (min.y + max.y) * 0.5), Axis::Y), // right
-    ];
-    for (m, axis) in midpoints {
-        if (pos_f - m).length() <= handle_radius {
-            return PointerMode::Skew { axis };
-        }
-    }
-
-    PointerMode::Rotate
-}
-
-/// Classify a pointer for Skew mode: inside bounds translates, near an edge
-/// midpoint skews; otherwise defaults to horizontal/vertical skew based on
-/// closest edge.
-fn classify_skew(bounds: ogre_core::Rect, pos: IVec2, handle_radius: f32) -> PointerMode {
-    let pos_f = pos.as_vec2();
-    let min = Vec2::new(bounds.x as f32, bounds.y as f32);
-    let max = Vec2::new(
-        (bounds.x + bounds.w as i32) as f32,
-        (bounds.y + bounds.h as i32) as f32,
-    );
-
-    if bounds.contains(pos) {
-        return PointerMode::Translate;
-    }
-
-    let midpoints = [
-        (Vec2::new((min.x + max.x) * 0.5, min.y), Axis::X), // top
-        (Vec2::new((min.x + max.x) * 0.5, max.y), Axis::X), // bottom
-        (Vec2::new(min.x, (min.y + max.y) * 0.5), Axis::Y), // left
-        (Vec2::new(max.x, (min.y + max.y) * 0.5), Axis::Y), // right
-    ];
-    for (m, axis) in midpoints {
-        if (pos_f - m).length() <= handle_radius {
-            return PointerMode::Skew { axis };
-        }
-    }
-
-    // Default to the nearest edge midpoint.
-    let mut best = None;
-    let mut best_d2 = f32::INFINITY;
-    for (m, axis) in midpoints {
-        let d2 = (pos_f - m).length_squared();
-        if d2 < best_d2 {
-            best_d2 = d2;
-            best = Some(PointerMode::Skew { axis });
-        }
-    }
-    best.unwrap_or(PointerMode::Translate)
 }
 
 /// Draw a warp grid as a lattice of lines with handles at control points.
@@ -1189,20 +1288,22 @@ mod tests {
     fn free_transform_tool_pure_translation_uses_move_layer_by() {
         let mut state = AppState::new_document(200, 200);
         let id = state.doc().active.unwrap();
-        fill_red_block(&mut state.tabs[state.active_tab].doc, id);
+        // A 20x20 block leaves room to press deep in the interior, away from
+        // the corner/edge handles (which win over the interior by design).
+        fill_red_rect(&mut state.tabs[state.active_tab].doc, id, 20, 20);
         state.tool_manager.set_tool(ToolKind::FreeTransform);
 
         // Start inside the bounds and drag by an integer vector.
         send(
             &mut state.tool_manager,
             &state.tabs[state.active_tab].doc,
-            IVec2::new(0, 0),
+            IVec2::new(10, 10),
             Phase::Down,
         );
         send(
             &mut state.tool_manager,
             &state.tabs[state.active_tab].doc,
-            IVec2::new(5, 7),
+            IVec2::new(15, 17),
             Phase::Drag,
         );
         let cmd = commit(&mut state.tool_manager, &state.tabs[state.active_tab].doc).unwrap();
@@ -1628,5 +1729,227 @@ mod tests {
         let layer = state.doc().layer(id).unwrap();
         let bounds = layer.buffer().unwrap().exact_bounds().unwrap();
         assert!(bounds.w >= 10 && bounds.h >= 10);
+    }
+
+    #[test]
+    fn classify_pointer_prefers_handles_over_inside_translate() {
+        let bounds = ogre_core::Rect::new(0, 0, 20, 20);
+        // Pressing a corner handle from *inside* the bounds must Scale, not
+        // Translate — the handle squares sit on the bounds corners, so most of
+        // their clickable area is inside the rectangle.
+        assert_eq!(
+            classify_pointer(bounds, IVec2::new(2, 2), 6.0),
+            PointerMode::Scale
+        );
+        // Same for an edge-midpoint (skew) handle.
+        assert_eq!(
+            classify_pointer(bounds, IVec2::new(10, 2), 6.0),
+            PointerMode::Skew { axis: Axis::X }
+        );
+        // Deep inside still translates; far outside still rotates.
+        assert_eq!(
+            classify_pointer(bounds, IVec2::new(10, 10), 6.0),
+            PointerMode::Translate
+        );
+        assert_eq!(
+            classify_pointer(bounds, IVec2::new(30, 10), 6.0),
+            PointerMode::Rotate
+        );
+        // Skew mode has the same handles-first rule.
+        assert_eq!(
+            classify_skew(bounds, IVec2::new(10, 2), 6.0),
+            PointerMode::Skew { axis: Axis::X }
+        );
+        assert_eq!(
+            classify_skew(bounds, IVec2::new(10, 10), 6.0),
+            PointerMode::Translate
+        );
+    }
+
+    #[test]
+    fn free_transform_second_drag_composes_instead_of_resetting() {
+        let mut state = AppState::new_document(200, 200);
+        let id = state.doc().active.unwrap();
+        // 6x6 block; half-open centre (3,3).
+        fill_red_rect(&mut state.tabs[state.active_tab].doc, id, 6, 6);
+        state.tool_manager.set_tool(ToolKind::FreeTransform);
+
+        // First drag: press the corner handle at (7,3) and drag to (11,3) —
+        // distance from centre goes 4 -> 8, a 2x scale about (3,3).
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(7, 3),
+            Phase::Down,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(11, 3),
+            Phase::Drag,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(11, 3),
+            Phase::Up,
+        );
+
+        // The transformed box is now (-3,-3)-(9,9) half-open, centre still
+        // (3,3). Grab the bottom-right corner handle at (11,9) (2 px from the
+        // transformed corner, 10 px from the centre) and drag to (19,15) (20 px
+        // from the centre): another 2x. The two drags must compose to 4x — the
+        // second press must not reset the first drag's preview.
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(11, 9),
+            Phase::Down,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(19, 15),
+            Phase::Drag,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(19, 15),
+            Phase::Up,
+        );
+
+        let cmd = commit(&mut state.tool_manager, &state.tabs[state.active_tab].doc).unwrap();
+        dispatch::dispatch(&mut state, cmd).unwrap();
+
+        // 4x about (3,3): source corner (0,0) maps to (3,3) + 4*(-3,-3) =
+        // (-9,-9); the floored layer offset is (-9,-9). (A reset-on-press bug
+        // would apply only the second 2x, giving (-3,-3).)
+        assert_eq!(state.doc().layer(id).unwrap().offset, IVec2::new(-9, -9));
+    }
+
+    #[test]
+    fn free_transform_distort_edits_survive_second_press() {
+        let mut state = AppState::new_document(200, 200);
+        let id = state.doc().active.unwrap();
+        fill_red_rect(&mut state.tabs[state.active_tab].doc, id, 20, 20);
+        state.tool_manager.set_tool(ToolKind::FreeTransform);
+        *state
+            .tool_manager
+            .free_transform_tool_mut()
+            .unwrap()
+            .mode_mut() = FreeTransformMode::Distort;
+
+        // Drag the TL corner handle from (0,0) to (5,5).
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(1, 1),
+            Phase::Down,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(5, 5),
+            Phase::Drag,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(5, 5),
+            Phase::Up,
+        );
+
+        // A second press away from any handle must not wipe the edited quad.
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(100, 100),
+            Phase::Down,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(100, 100),
+            Phase::Up,
+        );
+
+        let tool = state.tool_manager.free_transform_tool_mut().unwrap();
+        assert_eq!(
+            tool.dst_quad[0],
+            IVec2::new(5, 5),
+            "second press must not reset the distort quad"
+        );
+    }
+
+    #[test]
+    fn free_transform_layer_switch_mid_preview_discards_old_preview() {
+        let mut state = AppState::new_document(200, 200);
+        let layer_a = state.doc().active.unwrap();
+        fill_red_rect(&mut state.tabs[state.active_tab].doc, layer_a, 20, 20);
+        let layer_b = state.doc_mut().add_raster_layer("b");
+        fill_red_rect(&mut state.tabs[state.active_tab].doc, layer_b, 20, 20);
+        // Keep A active while the preview starts.
+        state.doc_mut().active = Some(layer_a);
+        state.tool_manager.set_tool(ToolKind::FreeTransform);
+
+        // Start a scale preview on A.
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(26, 3),
+            Phase::Down,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(30, 3),
+            Phase::Drag,
+        );
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(30, 3),
+            Phase::Up,
+        );
+
+        // Switch the active layer to B, then press on the canvas. The press
+        // must discard A's preview and start fresh on B — A's affine must not
+        // compose onto, or commit onto, layer B.
+        state.doc_mut().active = Some(layer_b);
+        send(
+            &mut state.tool_manager,
+            &state.tabs[state.active_tab].doc,
+            IVec2::new(10, 10),
+            Phase::Down,
+        );
+
+        let tool = state.tool_manager.free_transform_tool_mut().unwrap();
+        assert_eq!(tool.layer, Some(layer_b));
+        assert_eq!(tool.affine, Affine2::IDENTITY);
+        assert_eq!(tool.base_affine, Affine2::IDENTITY);
+        assert_eq!(tool.center, Vec2::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn free_transform_commit_after_layer_deleted_resets_preview() {
+        let mut state = AppState::new_document(200, 200);
+        let id = state.doc().active.unwrap();
+        fill_red_rect(&mut state.tabs[state.active_tab].doc, id, 20, 20);
+
+        let mut tool = FreeTransformTool::new();
+        tool.layer = Some(id);
+        tool.start = Some(IVec2::new(30, 10));
+        tool.center = Vec2::new(10.0, 10.0);
+        tool.affine = scale_around(Vec2::new(10.0, 10.0), 2.0);
+        tool.base_affine = tool.affine;
+
+        // Delete the layer mid-preview, then commit: no command, and the
+        // preview affine must not linger for the next press.
+        ogre_core::delete_layer(&mut state.tabs[state.active_tab].doc, id).unwrap();
+        let cmd = Tool::commit(&mut tool, &state.tabs[state.active_tab].doc);
+        assert!(cmd.is_none());
+        assert_eq!(tool.affine, Affine2::IDENTITY);
+        assert_eq!(tool.base_affine, Affine2::IDENTITY);
     }
 }

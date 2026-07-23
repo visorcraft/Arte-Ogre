@@ -365,12 +365,37 @@ fn forward_pointer_events(
 
     let pressure = latest_pointer_pressure(ui);
 
+    // Pointer-down carries the *press* position: egui reports drag_started
+    // only on the first pointer move, whose position may already be outside a
+    // tool's handle hit radius (a fast flick off a Free Transform handle would
+    // otherwise misclassify as a rotate/translate).
+    let down_doc_pos = ui
+        .input(|i| i.pointer.press_origin())
+        .map(|p| {
+            let rel = Vec2::new(p.x - canvas_rect.min.x, p.y - canvas_rect.min.y);
+            let mut d = screen_to_doc(rel, app.state.viewport(), ppp);
+            if app.state.snap_to_grid && app.state.grid_spacing > 0 {
+                d = snap_to_grid(d.as_vec2(), app.state.grid_spacing);
+            }
+            d
+        })
+        .unwrap_or(doc_pos);
+
+    // Free Transform hit-tests its handles in document space, but the usable
+    // click radius is a screen-space constant: hand it the zoom-adjusted
+    // radius before dispatching.
+    let ft_radius = crate::tools::transform::FreeTransformTool::HANDLE_RADIUS_SCREEN * ppp
+        / app.state.viewport().zoom;
+    if let Some(tool) = app.state.tool_manager.free_transform_tool_mut() {
+        tool.set_handle_radius_doc(ft_radius);
+    }
+
     let doc = app.state.doc().clone();
-    let mut dispatch_phase = |phase| {
+    let mut dispatch_phase = |phase, pos| {
         if let Some(cmd) = app.state.tool_manager.on_pointer(
             &doc,
             PointerEvent {
-                doc_pos,
+                doc_pos: pos,
                 phase,
                 modifiers,
                 pressure,
@@ -381,19 +406,19 @@ fn forward_pointer_events(
     };
 
     if response.drag_started_by(egui::PointerButton::Primary) {
-        dispatch_phase(Phase::Down);
+        dispatch_phase(Phase::Down, down_doc_pos);
     }
     if response.dragged_by(egui::PointerButton::Primary) {
-        dispatch_phase(Phase::Drag);
+        dispatch_phase(Phase::Drag, doc_pos);
     }
     if response.drag_stopped_by(egui::PointerButton::Primary) {
-        dispatch_phase(Phase::Up);
+        dispatch_phase(Phase::Up, doc_pos);
     }
     if response.clicked() {
         // A pure click (press + release without movement) dispatches a
         // zero-area Up so the active tool can clear its selection.
-        dispatch_phase(Phase::Down);
-        dispatch_phase(Phase::Up);
+        dispatch_phase(Phase::Down, doc_pos);
+        dispatch_phase(Phase::Up, doc_pos);
     }
 }
 
