@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc, Condvar, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -177,6 +177,10 @@ struct AutosaveState {
     busy: AtomicBool,
     /// Human-readable message when the worker stops unexpectedly.
     feedback: Mutex<String>,
+    /// Signalled (while holding `pending`) every time the worker goes idle or
+    /// stops, so [`Autosave::flush`] can wait for the queue to drain without
+    /// polling or sleeping.
+    drained: Condvar,
 }
 
 impl AutosaveState {
@@ -186,6 +190,7 @@ impl AutosaveState {
             last_path: Mutex::new(None),
             busy: AtomicBool::new(false),
             feedback: Mutex::new(String::new()),
+            drained: Condvar::new(),
         }
     }
 }
@@ -225,45 +230,66 @@ impl AutosaveWorker {
                 };
                 let Some((doc, path)) = task else {
                     // No snapshot to write. Only clear busy if nothing new was
-                    // queued while we were waiting for the lock.
-                    if thread_state
+                    // queued while we were waiting for the lock. The flag is
+                    // stored and `drained` signalled under the `pending` lock so
+                    // a waiting `flush` cannot miss the transition.
+                    let guard = thread_state
                         .pending
                         .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .is_none()
-                    {
+                        .unwrap_or_else(|e| e.into_inner());
+                    if guard.is_none() {
                         thread_state.busy.store(false, Ordering::Release);
                     }
+                    thread_state.drained.notify_all();
                     continue;
                 };
 
-                match write_recovery_file_at(&dir, &doc, &path) {
-                    Ok(()) => {
+                // A panicking write must not kill the worker (autosave would
+                // silently stop for the rest of the session and `busy` would
+                // stick forever); treat it like an ordinary write failure.
+                let write = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    write_recovery_file_at(&dir, &doc, &path)
+                }));
+                match write {
+                    Ok(Ok(())) => {
                         if let Ok(mut last) = thread_state.last_path.lock() {
                             *last = Some(path);
                         }
                         prune_recovery_files(&dir, MAX_RECOVERY_FILES);
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         if let Ok(mut feedback) = thread_state.feedback.lock() {
                             *feedback = format!("autosave failed: {e}");
+                        }
+                    }
+                    Err(_) => {
+                        if let Ok(mut feedback) = thread_state.feedback.lock() {
+                            *feedback = "autosave failed: write panicked".to_string();
                         }
                     }
                 }
                 // Keep busy true if another save was queued while we were
                 // writing; the next loop iteration will pick it up.
-                if thread_state
+                let guard = thread_state
                     .pending
                     .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .is_none()
-                {
+                    .unwrap_or_else(|e| e.into_inner());
+                if guard.is_none() {
                     thread_state.busy.store(false, Ordering::Release);
                 }
+                thread_state.drained.notify_all();
             }
             // The channel disconnected, which means the worker thread is
-            // exiting abnormally. Make sure the UI does not stay stuck busy.
-            thread_state.busy.store(false, Ordering::Release);
+            // exiting abnormally. Make sure the UI does not stay stuck busy,
+            // and wake any `flush` waiting on the queue to drain.
+            {
+                let _guard = thread_state
+                    .pending
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                thread_state.busy.store(false, Ordering::Release);
+                thread_state.drained.notify_all();
+            }
             if let Ok(mut feedback) = thread_state.feedback.lock() {
                 *feedback = "Autosave worker stopped unexpectedly.".to_string();
             }
@@ -285,7 +311,14 @@ impl AutosaveWorker {
         }
         self.state.busy.store(true, Ordering::Release);
         self.notify.send(()).map_err(|_| {
-            self.state.busy.store(false, Ordering::Release);
+            // The worker is unreachable: drop the undeliverable snapshot and
+            // wake any `flush` so it cannot wait forever on a dead worker.
+            {
+                let mut guard = self.state.pending.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = None;
+                self.state.busy.store(false, Ordering::Release);
+                self.state.drained.notify_all();
+            }
             if let Ok(mut feedback) = self.state.feedback.lock() {
                 *feedback = "Autosave worker has stopped.".to_string();
             }
@@ -388,6 +421,20 @@ impl Autosave {
     /// `true` while a recovery snapshot is being written.
     pub fn busy(&self) -> bool {
         self.worker.is_busy()
+    }
+
+    /// Block until every snapshot queued so far has been processed — written
+    /// to disk, or dropped after a write failure or worker death.
+    ///
+    /// Call this before relying on recovery files being present. It is also the
+    /// right tool for shutdown, so a final in-flight autosave is not lost; in
+    /// tests it replaces sleeping and racing the worker.
+    pub fn flush(&self) {
+        let state = &self.worker.state;
+        let mut guard = state.pending.lock().unwrap_or_else(|e| e.into_inner());
+        while !(guard.is_none() && !state.busy.load(Ordering::Acquire)) {
+            guard = state.drained.wait(guard).unwrap_or_else(|e| e.into_inner());
+        }
     }
 
     /// Latest autosave feedback message, if any.
@@ -501,7 +548,7 @@ mod tests {
         autosave.maybe_save(&doc, true).expect("autosave queues");
 
         // Wait for the background worker to finish and then prune.
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
         prune_recovery_files(&dir, MAX_RECOVERY_FILES);
 
         let remaining = autosave.recovery_files();
@@ -578,7 +625,7 @@ mod tests {
             .expect("autosave should queue");
 
         // Wait for the background worker to finish.
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
 
         let recovered = autosave
             .load_latest_recovery()
@@ -600,6 +647,10 @@ mod tests {
         assert!(autosave.maybe_save(&doc, true).is_some());
         assert!(autosave.maybe_save(&doc, true).is_none());
 
+        // Drain the queued snapshot before removing the directory — removing
+        // while the background worker is mid-write races and intermittently
+        // fails with "Directory not empty".
+        autosave.flush();
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -611,7 +662,7 @@ mod tests {
         let mut autosave = Autosave::new(dir.clone(), Duration::ZERO);
 
         autosave.save(&Document::new(8, 8));
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
         assert!(!autosave.recovery_files().is_empty());
 
         autosave.clear_recovery();
@@ -629,11 +680,11 @@ mod tests {
 
         let doc1 = Document::new(16, 16);
         autosave.save(&doc1);
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
 
         let doc2 = Document::new(32, 32);
         autosave.save(&doc2);
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
 
         let recovered = autosave.load_latest_recovery().unwrap();
         assert_eq!((recovered.canvas.w, recovered.canvas.h), (32, 32));
@@ -802,7 +853,7 @@ theme = "System"
         autosave.maybe_save(&doc, true).unwrap();
         autosave.maybe_save(&doc, true);
 
-        std::thread::sleep(Duration::from_millis(200));
+        autosave.flush();
 
         // We should still have exactly one fresh recovery file.
         let files = autosave.recovery_files();
@@ -824,7 +875,7 @@ theme = "System"
         // so the caller controls when the snapshot is taken.
         let _ = autosave.worker.save(&doc, path.clone());
 
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
         assert!(path.exists(), "recovery file should be written");
 
         std::fs::remove_dir_all(&dir).unwrap();
@@ -842,7 +893,7 @@ theme = "System"
         autosave.save(&doc);
         assert!(autosave.busy());
 
-        std::thread::sleep(Duration::from_millis(100));
+        autosave.flush();
         assert!(!autosave.busy());
 
         std::fs::remove_dir_all(&dir).unwrap();
