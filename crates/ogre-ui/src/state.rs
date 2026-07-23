@@ -686,10 +686,11 @@ pub struct AppState {
     /// Whether a Polygon Lasso path is mid-build, so each new vertex coalesces
     /// into the same selection history entry instead of pushing a new one.
     pub polygon_building: bool,
-    /// Cached document-space selection outline edges (pixel-corner segments),
-    /// retraced only when [`Self::selection_outline_key`] no longer matches the
-    /// current selection — recomputing every frame would lag on big masks.
-    pub selection_outline: Vec<[ogre_core::IVec2; 2]>,
+    /// Cached document-space selection outline as chained boundary loops
+    /// (pixel-corner polylines, closed loops repeat their start point), rebuilt
+    /// only when [`Self::selection_outline_key`] no longer matches the current
+    /// selection — retracing and chaining every frame would lag on big masks.
+    pub selection_outline: Vec<Vec<ogre_core::IVec2>>,
     /// Outline cache key the cached `selection_outline` was built for; starts at
     /// a sentinel so the first frame always rebuilds.
     pub selection_outline_key: u64,

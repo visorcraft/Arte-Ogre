@@ -108,7 +108,8 @@ pub fn render_canvas(ui: &mut egui::Ui, app: &mut OgreApp) {
     let time = ui.ctx().input(|i| i.time);
     let key = app.state.doc().selection.outline_cache_key();
     if key != app.state.selection_outline_key {
-        app.state.selection_outline = app.state.doc().selection.outline_edges();
+        app.state.selection_outline =
+            chain_outline_loops(&app.state.doc().selection.outline_edges());
         app.state.selection_outline_key = key;
     }
     draw_selection_outline(
@@ -501,7 +502,7 @@ const ANTS_DASH: f32 = 4.0;
 const ANTS_SPEED: f32 = 16.0;
 
 /// Draw the committed selection as a solid, always-visible marching-ants outline
-/// from cached document-space `edges` (pixel-corner segments).
+/// from cached document-space boundary `loops` (pixel-corner polylines).
 ///
 /// Drawn in two passes: a **solid black base** over the whole outline (so it
 /// shows on light/busy artwork), then **marching white dashes** on top (so it
@@ -511,13 +512,13 @@ const ANTS_SPEED: f32 = 16.0;
 /// over a matching background.
 fn draw_selection_outline(
     painter: &egui::Painter,
-    edges: &[[IVec2; 2]],
+    loops: &[Vec<IVec2>],
     viewport: &ogre_gpu::Viewport,
     canvas_rect: egui::Rect,
     ppp: f32,
     time: f64,
 ) {
-    if edges.is_empty() {
+    if loops.is_empty() {
         return;
     }
     let origin = Vec2::new(canvas_rect.min.x, canvas_rect.min.y);
@@ -525,39 +526,137 @@ fn draw_selection_outline(
         let s = doc_to_screen(p, viewport, ppp) + origin;
         egui::Pos2::new(s.x, s.y)
     };
-    // Pass 1: solid black base over every edge.
-    let black = egui::Stroke::new(1.0, egui::Color32::BLACK);
-    for [a, b] in edges {
-        painter.line_segment([to_screen(*a), to_screen(*b)], black);
-    }
-    // Pass 2: marching white dashes. The phase moves them along the boundary.
     let phase = (time as f32 * ANTS_SPEED).rem_euclid(2.0 * ANTS_DASH);
-    for [a, b] in edges {
-        draw_white_dashes(painter, to_screen(*a), to_screen(*b), phase);
+    for shape in outline_shapes(loops, &to_screen, phase) {
+        painter.add(shape);
     }
 }
 
-/// Draw the "on" half of the marching-dash pattern over one screen-space edge in
-/// white. The dash phase comes from the dash's absolute screen position so the
-/// pattern is continuous across edges and marches with `phase`.
-fn draw_white_dashes(painter: &egui::Painter, a: egui::Pos2, b: egui::Pos2, phase: f32) {
-    let delta = b - a;
-    let len = delta.length();
-    if len <= 0.0 {
-        return;
-    }
-    let dir = delta / len;
-    let white = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    let mut t = 0.0;
-    while t < len {
-        let start = t;
-        let end = (t + ANTS_DASH).min(len);
-        let mid = a + dir * ((start + end) * 0.5);
-        // Even period → draw the white dash; odd → leave the black base showing.
-        if (((mid.x + mid.y - phase) / ANTS_DASH).floor() as i64).rem_euclid(2) == 0 {
-            painter.line_segment([a + dir * start, a + dir * end], white);
+/// Chain boundary edge segments into polylines, closing each chain that comes
+/// back to its start point (the common case: selection boundaries are closed
+/// curves). Mask outlines arrive as unordered 1-px unit segments; chaining is
+/// what lets [`outline_shapes`] stroke them as continuous paths — egui's
+/// `tessellate_line_segment` shrink+round collapses an axis-aligned 1-px
+/// `line_segment` to zero length, so drawing unit edges individually renders
+/// nothing (the dead-magic-wand bug).
+fn chain_outline_loops(edges: &[[IVec2; 2]]) -> Vec<Vec<IVec2>> {
+    fn norm(a: IVec2, b: IVec2) -> (IVec2, IVec2) {
+        if (a.x, a.y) <= (b.x, b.y) {
+            (a, b)
+        } else {
+            (b, a)
         }
-        t += ANTS_DASH;
+    }
+    let mut adj: ahash::AHashMap<IVec2, Vec<IVec2>> = ahash::AHashMap::new();
+    for &[a, b] in edges {
+        adj.entry(a).or_default().push(b);
+        adj.entry(b).or_default().push(a);
+    }
+    let mut used: ahash::AHashSet<(IVec2, IVec2)> = ahash::AHashSet::new();
+    let mut chains = Vec::new();
+    for &[a, b] in edges {
+        if !used.insert(norm(a, b)) {
+            continue;
+        }
+        let mut chain: std::collections::VecDeque<IVec2> = [a, b].into_iter().collect();
+        // Extend forward from the back, then backward from the front, always
+        // following the first still-unused edge.
+        loop {
+            let last = *chain.back().unwrap();
+            let next = adj
+                .get(&last)
+                .into_iter()
+                .flatten()
+                .find(|&&n| !used.contains(&norm(last, n)))
+                .copied();
+            match next {
+                Some(n) => {
+                    used.insert(norm(last, n));
+                    chain.push_back(n);
+                }
+                None => break,
+            }
+        }
+        loop {
+            let first = *chain.front().unwrap();
+            let prev = adj
+                .get(&first)
+                .into_iter()
+                .flatten()
+                .find(|&&n| !used.contains(&norm(first, n)))
+                .copied();
+            match prev {
+                Some(n) => {
+                    used.insert(norm(first, n));
+                    chain.push_front(n);
+                }
+                None => break,
+            }
+        }
+        chains.push(chain.into_iter().collect());
+    }
+    chains
+}
+
+/// Build the shapes for the committed-selection marching-ants outline: one
+/// black base polyline per boundary loop, then white dashes walked along each
+/// loop's arc length at `phase`. Kept separate from [`draw_selection_outline`]
+/// so tests can tessellate the result without a running egui frame. Chaining
+/// edges into loops happens once per selection change (see the cache in
+/// [`render_canvas`]), not here — this runs every frame.
+fn outline_shapes(
+    loops: &[Vec<IVec2>],
+    to_screen: &dyn Fn(IVec2) -> egui::Pos2,
+    phase: f32,
+) -> Vec<egui::Shape> {
+    let black = egui::Stroke::new(1.0, egui::Color32::BLACK);
+    let mut shapes = Vec::new();
+    for chain in loops {
+        let pts: Vec<egui::Pos2> = chain.iter().map(|&p| to_screen(p)).collect();
+        if pts.len() < 2 {
+            continue;
+        }
+        shapes.push(egui::Shape::line(pts.clone(), black));
+        push_dash_shapes(&mut shapes, &pts, phase);
+    }
+    shapes
+}
+
+/// Walk a screen-space polyline by arc length and emit the "on" half of the
+/// marching-dash pattern as white segments of [`ANTS_DASH`] length. Dashes are
+/// emitted at absolute arc positions so the pattern is continuous around
+/// corners and marches with `phase`. Dash segments are long enough (4 px) to
+/// survive egui's line-segment pixel rounding, unlike the raw unit edges.
+/// Arc length is accumulated in `f64` so dashes do not stall on pathological
+/// boundaries whose arc length exceeds the exact-integer range of `f32`.
+fn push_dash_shapes(shapes: &mut Vec<egui::Shape>, pts: &[egui::Pos2], phase: f32) {
+    let white = egui::Stroke::new(1.0, egui::Color32::WHITE);
+    let period = 2.0 * f64::from(ANTS_DASH);
+    let dash = f64::from(ANTS_DASH);
+    let phase = f64::from(phase);
+    let mut s = 0.0_f64; // arc length at the start of the current segment
+    for w in pts.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let seg = f64::from((b - a).length());
+        if seg <= 0.0 {
+            continue;
+        }
+        // White-on intervals in arc space: [k*period + phase, + ANTS_DASH].
+        let k0 = ((s - phase) / period).floor() as i64 - 1;
+        let k1 = ((s + seg - phase) / period).ceil() as i64 + 1;
+        for k in k0..=k1 {
+            let on0 = k as f64 * period + phase;
+            let lo = on0.max(s);
+            let hi = (on0 + dash).min(s + seg);
+            if hi > lo {
+                let dir = (b - a) / (b - a).length();
+                shapes.push(egui::Shape::line_segment(
+                    [a + dir * (lo - s) as f32, a + dir * (hi - s) as f32],
+                    white,
+                ));
+            }
+        }
+        s += seg;
     }
 }
 
@@ -874,6 +973,143 @@ mod tests {
         assert_eq!(
             cursor_doc_pos(Some(egui::pos2(110.0, 120.0)), rect, &vp, 1.0, 5, 5),
             None
+        );
+    }
+
+    /// Boundary of a single selected pixel at (10, 10): four unit edges.
+    fn one_pixel_edges() -> [[IVec2; 2]; 4] {
+        [
+            [IVec2::new(10, 10), IVec2::new(11, 10)],
+            [IVec2::new(10, 11), IVec2::new(11, 11)],
+            [IVec2::new(10, 10), IVec2::new(10, 11)],
+            [IVec2::new(11, 10), IVec2::new(11, 11)],
+        ]
+    }
+
+    #[test]
+    fn chain_outline_loops_closes_single_pixel_loop() {
+        let loops = chain_outline_loops(&one_pixel_edges());
+        assert_eq!(loops.len(), 1);
+        let chain = &loops[0];
+        assert_eq!(chain.first(), chain.last(), "loop must close");
+        assert_eq!(chain.len(), 5, "4 edges + repeated start point");
+    }
+
+    #[test]
+    fn chain_outline_loops_splits_disjoint_regions() {
+        let far = [
+            [IVec2::new(50, 50), IVec2::new(51, 50)],
+            [IVec2::new(50, 51), IVec2::new(51, 51)],
+            [IVec2::new(50, 50), IVec2::new(50, 51)],
+            [IVec2::new(51, 50), IVec2::new(51, 51)],
+        ];
+        let all: Vec<_> = one_pixel_edges()
+            .iter()
+            .chain(far.iter())
+            .copied()
+            .collect();
+        let loops = chain_outline_loops(&all);
+        assert_eq!(loops.len(), 2);
+    }
+
+    #[test]
+    fn chain_outline_loops_preserves_total_length() {
+        // Boundary of a solid 3x2 block: 10 unit edges, perimeter length 10.
+        let mut edges = Vec::new();
+        for x in 0..3 {
+            edges.push([IVec2::new(x, 0), IVec2::new(x + 1, 0)]);
+            edges.push([IVec2::new(x, 2), IVec2::new(x + 1, 2)]);
+        }
+        for y in 0..2 {
+            edges.push([IVec2::new(0, y), IVec2::new(0, y + 1)]);
+            edges.push([IVec2::new(3, y), IVec2::new(3, y + 1)]);
+        }
+        let input_len: i32 = edges
+            .iter()
+            .map(|[a, b]| (a.x - b.x).abs() + (a.y - b.y).abs())
+            .sum();
+        let loops = chain_outline_loops(&edges);
+        assert_eq!(loops.len(), 1);
+        let out_len: i32 = loops
+            .iter()
+            .flat_map(|l| l.windows(2))
+            .map(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs())
+            .sum();
+        assert_eq!(input_len, out_len);
+    }
+
+    #[test]
+    fn chain_outline_loops_handles_diagonal_pinch_point() {
+        // Two diagonally-touching pixels share one corner vertex (degree 4).
+        let edges = [
+            // Pixel (0, 0).
+            [IVec2::new(0, 0), IVec2::new(1, 0)],
+            [IVec2::new(0, 1), IVec2::new(1, 1)],
+            [IVec2::new(0, 0), IVec2::new(0, 1)],
+            [IVec2::new(1, 0), IVec2::new(1, 1)],
+            // Pixel (1, 1).
+            [IVec2::new(1, 1), IVec2::new(2, 1)],
+            [IVec2::new(1, 2), IVec2::new(2, 2)],
+            [IVec2::new(1, 1), IVec2::new(1, 2)],
+            [IVec2::new(2, 1), IVec2::new(2, 2)],
+        ];
+        let loops = chain_outline_loops(&edges);
+        let traversed: usize = loops.iter().map(|l| l.len().saturating_sub(1)).sum();
+        assert_eq!(traversed, 8, "every edge traversed exactly once");
+    }
+
+    #[test]
+    fn chain_outline_loops_closes_long_rect_edges() {
+        // Rect selections emit four long edges, not unit segments.
+        let edges = [
+            [IVec2::new(0, 0), IVec2::new(30, 0)],
+            [IVec2::new(0, 20), IVec2::new(30, 20)],
+            [IVec2::new(0, 0), IVec2::new(0, 20)],
+            [IVec2::new(30, 0), IVec2::new(30, 20)],
+        ];
+        let loops = chain_outline_loops(&edges);
+        assert_eq!(loops.len(), 1);
+        assert_eq!(loops[0].first(), loops[0].last(), "loop must close");
+        assert_eq!(loops[0].len(), 5);
+    }
+
+    /// Regression test for the dead magic wand: mask outlines are 1-px unit
+    /// segments, and egui's `tessellate_line_segment` shrink+round
+    /// (`round_line_segments_to_pixels`) collapses an axis-aligned 1-px segment
+    /// to zero length — drawing each unit edge as its own `line_segment`
+    /// rendered literally nothing, so wand/lasso/quick-select selections showed
+    /// no marching ants. The outline must instead tessellate to real geometry.
+    #[test]
+    fn unit_edge_outline_produces_non_empty_mesh() {
+        let loops = chain_outline_loops(&one_pixel_edges());
+        let to_screen = |p: IVec2| egui::Pos2::new(p.x as f32, p.y as f32);
+        let shapes = outline_shapes(&loops, &to_screen, 0.0);
+        let mut tess = egui::epaint::Tessellator::new(
+            1.0,
+            egui::epaint::TessellationOptions::default(),
+            [1, 1],
+            Vec::new(),
+        );
+        let mut prims = Vec::new();
+        for shape in shapes {
+            tess.tessellate_clipped_shape(
+                egui::epaint::ClippedShape {
+                    clip_rect: egui::Rect::EVERYTHING,
+                    shape,
+                },
+                &mut prims,
+            );
+        }
+        let vertices: usize = prims
+            .iter()
+            .filter_map(|p| match &p.primitive {
+                egui::epaint::Primitive::Mesh(m) => Some(m.vertices.len()),
+                _ => None,
+            })
+            .sum();
+        assert!(
+            vertices > 0,
+            "unit-edge outline must tessellate to visible geometry"
         );
     }
 }
