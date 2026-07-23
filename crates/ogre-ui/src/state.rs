@@ -1174,6 +1174,15 @@ impl AppState {
         self.plugin_busy || self.io_busy || self.bg_removal_rx.is_some()
     }
 
+    /// Cleanly shut down the session's background autosave: drain any in-flight
+    /// write before clearing recovery files. Draining first means a snapshot
+    /// queued on the final frame cannot land *after* the cleanup and survive as
+    /// a spurious "recover unsaved work" prompt on the next launch.
+    pub fn shutdown(&mut self) {
+        self.autosave.flush();
+        self.autosave.clear_recovery();
+    }
+
     /// Make room for one more tab if at [`MAX_OPEN_TABS`]; returns `Err` with a
     /// user-facing message when every existing tab is unsaved and there is
     /// nothing safe to evict.
@@ -1640,6 +1649,25 @@ mod tests {
         assert!(st.dirty);
         assert_eq!(st.view, AppView::Editor);
         assert_eq!(st.tabs[0].history.undo_len(), 0);
+    }
+
+    #[test]
+    fn shutdown_drains_autosave_then_clears_recovery() {
+        let dir = std::env::temp_dir().join(format!("ogre_shutdown_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut st = AppState::new_document(64, 64);
+        st.autosave = crate::prefs::Autosave::new(dir.clone(), std::time::Duration::from_millis(1));
+        // Queue a recovery snapshot, as the per-frame autosave does.
+        let doc = st.doc().clone();
+        st.autosave.maybe_save(&doc, true).expect("autosave queues");
+        st.shutdown();
+        assert!(
+            st.autosave.recovery_files().is_empty(),
+            "clean shutdown must not leave recovery files behind"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

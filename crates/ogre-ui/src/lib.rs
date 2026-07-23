@@ -579,10 +579,10 @@ impl eframe::App for OgreApp {
     }
 
     fn on_exit(&mut self) {
-        // ponytail: best-effort cleanup so only a crash leaves recovery files
-        // behind. A save queued on the final frame could race the background
-        // worker and survive (a harmless one-time recover prompt next launch);
-        // upgrade to a clean-shutdown marker if that ever bites.
-        self.state.autosave.clear_recovery();
+        // Clean exit: drain the autosave worker, then clear recovery files so
+        // only a crash leaves them behind. Draining first means a save queued
+        // on the final frame cannot race the cleanup and survive as a spurious
+        // recover prompt next launch.
+        self.state.shutdown();
     }
 }
