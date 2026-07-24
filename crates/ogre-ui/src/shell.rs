@@ -524,6 +524,43 @@ pub(crate) fn deselect_selection(state: &mut AppState) -> bool {
     .is_ok()
 }
 
+/// Nudge the active layer by `delta` (arrow-key move, Move tool only).
+///
+/// Consecutive nudges of the same layer coalesce into the top history entry
+/// when it is a matching move, so holding an arrow key produces a single undo
+/// step; anything else on top of the stack starts a fresh entry.
+pub fn nudge_active_layer(state: &mut AppState, delta: ogre_core::IVec2) -> bool {
+    if state.tool_manager.active() != crate::tools::ToolKind::Move || state.is_busy() {
+        return false;
+    }
+    let Some(id) = state.doc().active else {
+        return false;
+    };
+    {
+        let Ok(layer) = state.doc().layer(id) else {
+            return false;
+        };
+        if !layer.is_raster() || layer.locked {
+            return false;
+        }
+    }
+    let coalesced = {
+        let tab = state.current_tab_mut();
+        match tab.history.undo_top_mut() {
+            Some(top) => top.coalesce_move(&mut tab.doc, id, delta),
+            None => false,
+        }
+    };
+    if coalesced {
+        state.dirty = true;
+        state.mark_current_unsaved();
+        let tab_id = state.current_tab().id;
+        state.mark_birdseye_tab_dirty(tab_id);
+        return true;
+    }
+    dispatch::dispatch(state, Box::new(ogre_core::MoveLayerByCmd::new(id, delta))).is_ok()
+}
+
 fn delete_selection_shortcut(state: &mut AppState) -> bool {
     if state.current_tab().doc.selection.is_empty() {
         return false;
@@ -4780,6 +4817,60 @@ mod tests {
 
         assert!(handle_shortcut(&mut state, Shortcut::Deselect));
         assert!(state.current_tab().doc.selection.is_empty());
+    }
+
+    #[test]
+    fn nudge_active_layer_moves_one_px_and_coalesces_streak() {
+        let mut state = AppState::new_document(100, 100);
+        state.tool_manager.set_tool(crate::tools::ToolKind::Move);
+        let id = state.current_tab().doc.active.unwrap();
+
+        assert!(nudge_active_layer(&mut state, ogre_core::IVec2::new(1, 0)));
+        assert!(nudge_active_layer(&mut state, ogre_core::IVec2::new(1, 0)));
+        assert!(nudge_active_layer(&mut state, ogre_core::IVec2::new(0, -1)));
+        assert_eq!(
+            state.current_tab().doc.layer(id).unwrap().offset,
+            ogre_core::IVec2::new(2, -1)
+        );
+        assert_eq!(
+            state.history().undo_len(),
+            1,
+            "a nudge streak must be a single undo step"
+        );
+
+        assert!(dispatch::undo(&mut state).is_some());
+        assert_eq!(
+            state.current_tab().doc.layer(id).unwrap().offset,
+            ogre_core::IVec2::ZERO
+        );
+    }
+
+    #[test]
+    fn nudge_active_layer_requires_move_tool() {
+        let mut state = AppState::new_document(100, 100);
+        // Preferences may restore any persisted tool, so pin a non-Move tool.
+        state
+            .tool_manager
+            .set_tool(crate::tools::ToolKind::RectSelect);
+        let id = state.current_tab().doc.active.unwrap();
+
+        assert!(!nudge_active_layer(&mut state, ogre_core::IVec2::new(1, 0)));
+        assert_eq!(
+            state.current_tab().doc.layer(id).unwrap().offset,
+            ogre_core::IVec2::ZERO
+        );
+        assert_eq!(state.history().undo_len(), 0);
+    }
+
+    #[test]
+    fn nudge_active_layer_rejects_locked_layer() {
+        let mut state = AppState::new_document(100, 100);
+        state.tool_manager.set_tool(crate::tools::ToolKind::Move);
+        let id = state.current_tab().doc.active.unwrap();
+        state.current_tab_mut().doc.layer_mut(id).unwrap().locked = true;
+
+        assert!(!nudge_active_layer(&mut state, ogre_core::IVec2::new(1, 0)));
+        assert_eq!(state.history().undo_len(), 0);
     }
 
     #[test]

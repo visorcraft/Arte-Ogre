@@ -80,6 +80,17 @@ pub trait Command: Send {
         false
     }
 
+    /// Try to absorb an additional move-by-`delta` on `layer` into this
+    /// command.
+    ///
+    /// Used by the UI for arrow-key nudges so that a streak of nudges on the
+    /// same layer produces exactly one history entry. The default
+    /// implementation returns `false`; commands that represent a layer move
+    /// should update `doc` in place and return `true`.
+    fn coalesce_move(&mut self, _doc: &mut Document, _layer: LayerId, _delta: IVec2) -> bool {
+        false
+    }
+
     /// Return the layer ids this command may need to access during `undo` or
     /// `redo`.
     ///
@@ -1137,6 +1148,33 @@ impl Command for MoveLayerByCmd {
             }
         }
         doc.active = self.prior_active;
+    }
+
+    fn coalesce_move(&mut self, doc: &mut Document, layer: LayerId, delta: IVec2) -> bool {
+        if self.id != Some(layer) || delta == IVec2::ZERO {
+            return false;
+        }
+        let Ok(existing) = doc.layer(layer) else {
+            return false;
+        };
+        if existing.locked {
+            return false;
+        }
+        let old_offset = existing.offset;
+        let new_offset = match (
+            old_offset.x.checked_add(delta.x),
+            old_offset.y.checked_add(delta.y),
+            self.delta.x.checked_add(delta.x),
+            self.delta.y.checked_add(delta.y),
+        ) {
+            (Some(x), Some(y), Some(dx), Some(dy)) => {
+                self.delta = IVec2::new(dx, dy);
+                IVec2::new(x, y)
+            }
+            _ => return false,
+        };
+        doc.layer_mut(layer).unwrap().offset = new_offset;
+        true
     }
 
     fn referenced_layers(&self) -> Vec<LayerId> {
@@ -3642,6 +3680,60 @@ mod tests {
             Err(OgreError::InvalidOperation("layer offset out of range"))
         ));
         assert_eq!(doc.layer(id).unwrap().offset, IVec2::new(i32::MAX, 0));
+    }
+
+    #[test]
+    fn move_layer_by_cmd_coalesces_nudge_streak_into_one_undo_step() {
+        let mut doc = Document::new(100, 100);
+        let id = doc.add_raster_layer("L");
+        let other = doc.add_raster_layer("M");
+        let mut history = History::new(0);
+
+        history
+            .do_command(
+                &mut doc,
+                Box::new(MoveLayerByCmd::new(id, IVec2::new(1, 0))),
+            )
+            .unwrap();
+
+        // Consecutive nudges on the same layer coalesce into the top command.
+        let top = history.undo_top_mut().unwrap();
+        assert!(top.coalesce_move(&mut doc, id, IVec2::new(1, 0)));
+        let top = history.undo_top_mut().unwrap();
+        assert!(top.coalesce_move(&mut doc, id, IVec2::new(0, 1)));
+        assert_eq!(doc.layer(id).unwrap().offset, IVec2::new(2, 1));
+
+        // A nudge on a different layer or a zero delta does not coalesce.
+        let top = history.undo_top_mut().unwrap();
+        assert!(!top.coalesce_move(&mut doc, other, IVec2::new(1, 0)));
+        let top = history.undo_top_mut().unwrap();
+        assert!(!top.coalesce_move(&mut doc, id, IVec2::ZERO));
+
+        // One undo returns to the offset from before the streak; one redo
+        // re-applies the whole streak.
+        history.undo(&mut doc);
+        assert_eq!(doc.layer(id).unwrap().offset, IVec2::ZERO);
+        history.redo(&mut doc);
+        assert_eq!(doc.layer(id).unwrap().offset, IVec2::new(2, 1));
+        assert_eq!(history.undo_len(), 1);
+    }
+
+    #[test]
+    fn move_layer_by_cmd_coalesce_rejects_locked_layer() {
+        let mut doc = Document::new(100, 100);
+        let id = doc.add_raster_layer("L");
+        let mut history = History::new(0);
+        history
+            .do_command(
+                &mut doc,
+                Box::new(MoveLayerByCmd::new(id, IVec2::new(1, 0))),
+            )
+            .unwrap();
+
+        doc.layer_mut(id).unwrap().locked = true;
+        let top = history.undo_top_mut().unwrap();
+        assert!(!top.coalesce_move(&mut doc, id, IVec2::new(1, 0)));
+        assert_eq!(doc.layer(id).unwrap().offset, IVec2::new(1, 0));
     }
 
     #[test]

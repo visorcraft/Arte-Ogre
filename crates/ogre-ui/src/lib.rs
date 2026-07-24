@@ -301,6 +301,42 @@ impl eframe::App for OgreApp {
             }
         }
 
+        // Arrow-key nudge: with the Move tool active, each arrow keypress
+        // moves the active layer by 1 px. OS auto-repeat is honored so holding
+        // a key keeps nudging; consecutive nudges coalesce into one undo step.
+        if !text_focused
+            && !dialog_open
+            && !self.state.welcome
+            && self.state.view == crate::state::AppView::Editor
+        {
+            let nudge = ui.ctx().input(|i| {
+                let mut delta = ogre_core::IVec2::ZERO;
+                for ev in i.events.iter() {
+                    if let egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } = ev
+                    {
+                        if modifiers.is_none() {
+                            match key {
+                                egui::Key::ArrowLeft => delta.x = delta.x.saturating_sub(1),
+                                egui::Key::ArrowRight => delta.x = delta.x.saturating_add(1),
+                                egui::Key::ArrowUp => delta.y = delta.y.saturating_sub(1),
+                                egui::Key::ArrowDown => delta.y = delta.y.saturating_add(1),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                (delta != ogre_core::IVec2::ZERO).then_some(delta)
+            });
+            if let Some(delta) = nudge {
+                shell::nudge_active_layer(&mut self.state, delta);
+            }
+        }
+
         // Brush-size adjust: `[` shrinks, `]` grows the active paint tool's
         // diameter. Bare-key (no modifiers), suppressed while typing or while a
         // modal is open, and on OS key auto-repeat — matching the tool-key path.

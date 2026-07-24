@@ -128,20 +128,24 @@ impl Tool for MoveTool {
         viewport: &ogre_gpu::Viewport,
         canvas_rect: EguiRect,
         pixels_per_point: f32,
-        _time: f64,
+        time: f64,
     ) {
         if !self.is_active() {
             return;
         }
         let Some(id) = self.layer else { return };
+        let Some(start) = self.start else { return };
         let Ok(layer) = doc.layer(id) else { return };
         let Some(buffer) = layer.buffer() else { return };
         let Some(bounds) = buffer.exact_bounds() else {
             return;
         };
+        // Track the live drag delta so the outline marks where the layer will
+        // land, not where it was when the drag started.
+        let delta = self.current - start;
         let doc_bounds = ogre_core::Rect::new(
-            bounds.x + layer.offset.x,
-            bounds.y + layer.offset.y,
+            bounds.x + layer.offset.x + delta.x,
+            bounds.y + layer.offset.y + delta.y,
             bounds.w,
             bounds.h,
         );
@@ -150,7 +154,11 @@ impl Tool for MoveTool {
         else {
             return;
         };
-        draw_wireframe(painter, screen);
+        crate::tools::rect_select::draw_marching_ants(painter, screen, time);
+        // Keep the ants marching while the pointer is held still mid-drag.
+        painter
+            .ctx()
+            .request_repaint_after(std::time::Duration::from_millis(50));
     }
 
     fn cancel(&mut self) {
@@ -1054,19 +1062,6 @@ fn selection_screen_rect(
         Pos2::new(min.x, min.y),
         Pos2::new(max.x, max.y),
     ))
-}
-
-/// Draw a simple wireframe rectangle.
-fn draw_wireframe(painter: &egui::Painter, rect: EguiRect) {
-    let stroke = Stroke::new(1.0, egui::Color32::WHITE);
-    let tl = rect.left_top();
-    let tr = rect.right_top();
-    let br = rect.right_bottom();
-    let bl = rect.left_bottom();
-    painter.line_segment([tl, tr], stroke);
-    painter.line_segment([tr, br], stroke);
-    painter.line_segment([br, bl], stroke);
-    painter.line_segment([bl, tl], stroke);
 }
 
 /// Draw a small square handle centred at `pos` with half-size `size`.

@@ -76,14 +76,51 @@ pub fn needs_resize_prompt(
     welcome || img_w > canvas_w || img_h > canvas_h
 }
 
+/// Compute the document-space offset for a pasted layer: centred on the
+/// cursor when it is over the canvas, otherwise centred on the canvas.
+fn paste_offset(
+    cursor: Option<ogre_core::IVec2>,
+    canvas_w: u32,
+    canvas_h: u32,
+    w: u32,
+    h: u32,
+) -> ogre_core::IVec2 {
+    let center =
+        cursor.unwrap_or_else(|| ogre_core::IVec2::new(canvas_w as i32 / 2, canvas_h as i32 / 2));
+    ogre_core::IVec2::new(center.x - w as i32 / 2, center.y - h as i32 / 2)
+}
+
 /// Paste `pixels` as a new raster layer named `"Pasted image"`.
 ///
-/// Dispatches a [`ogre_core::PasteImageLayerCmd`], clears the welcome flag, and
-/// marks the document dirty.
+/// The layer is centred on the cursor (or the canvas when the cursor is not
+/// over it), any active selection is deselected (batched with the paste into
+/// a single undo step), and the Move tool is activated so the new layer can be
+/// positioned immediately. Also clears the welcome flag and marks the document
+/// dirty.
 pub fn paste_new_layer(state: &mut AppState, w: u32, h: u32, pixels: Vec<Rgba32F>) {
-    let cmd = ogre_core::PasteImageLayerCmd::new("Pasted image", w, h, pixels);
-    let _ = crate::dispatch::dispatch(state, Box::new(cmd));
+    let offset = paste_offset(
+        state.cursor_doc_pos,
+        state.doc().canvas.w,
+        state.doc().canvas.h,
+        w,
+        h,
+    );
+    let mut batch = ogre_core::BatchCmd::new("Paste image");
+    batch.push(Box::new(ogre_core::PasteImageLayerCmd::new(
+        "Pasted image",
+        w,
+        h,
+        pixels,
+        offset,
+    )));
+    if !state.doc().selection.is_empty() {
+        batch.push(Box::new(ogre_core::SetSelectionCmd::new(
+            ogre_core::Selection::none(),
+        )));
+    }
+    let _ = crate::dispatch::dispatch(state, Box::new(batch));
     state.welcome = false;
+    state.set_tool_and_persist(crate::tools::ToolKind::Move);
 }
 
 /// Add a decoded image as a new layer, routing through the resize prompt when
@@ -291,5 +328,28 @@ pub fn render_paste_prompt(ctx: &egui::Context, state: &mut AppState) {
         }
     } else if cancel || !open || escape {
         state.paste_prompt = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paste_offset_centres_on_cursor() {
+        let offset = paste_offset(Some(ogre_core::IVec2::new(100, 50)), 800, 600, 40, 20);
+        assert_eq!(offset, ogre_core::IVec2::new(80, 40));
+    }
+
+    #[test]
+    fn paste_offset_falls_back_to_canvas_centre() {
+        let offset = paste_offset(None, 800, 600, 40, 20);
+        assert_eq!(offset, ogre_core::IVec2::new(380, 290));
+    }
+
+    #[test]
+    fn paste_offset_can_be_negative_near_origin() {
+        let offset = paste_offset(Some(ogre_core::IVec2::new(5, 5)), 800, 600, 40, 20);
+        assert_eq!(offset, ogre_core::IVec2::new(-15, -5));
     }
 }

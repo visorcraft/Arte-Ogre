@@ -473,7 +473,8 @@ impl Command for EditVectorCmd {
     }
 }
 
-/// Add a raster layer containing pasted image pixels (top-left at the canvas origin).
+/// Add a raster layer containing pasted image pixels, with the layer's
+/// top-left placed at `offset` in document coordinates.
 ///
 /// On first application the layer is created and filled with the provided
 /// pixels. Undo soft-removes the layer; redo restores it without re-writing
@@ -484,6 +485,7 @@ pub struct PasteImageLayerCmd {
     width: u32,
     height: u32,
     pixels: Vec<crate::pixel::Rgba32F>,
+    offset: crate::coord::IVec2,
     new_id: Option<LayerId>,
     inserted_index: Option<usize>,
     prior_active: Option<LayerId>,
@@ -491,18 +493,20 @@ pub struct PasteImageLayerCmd {
 
 impl PasteImageLayerCmd {
     /// Create a paste-image-layer command. `pixels` is row-major RGBA,
-    /// len = `width * height`.
+    /// len = `width * height`; `offset` is the layer's document-space origin.
     pub fn new(
         name: impl Into<String>,
         width: u32,
         height: u32,
         pixels: Vec<crate::pixel::Rgba32F>,
+        offset: crate::coord::IVec2,
     ) -> Self {
         Self {
             name: name.into(),
             width,
             height,
             pixels,
+            offset,
             new_id: None,
             inserted_index: None,
             prior_active: None,
@@ -533,7 +537,9 @@ impl Command for PasteImageLayerCmd {
         let index = doc.order.len();
         let id = doc.add_raster_layer(&self.name);
         {
-            let buffer = doc.layer_mut(id).unwrap().buffer_mut().unwrap();
+            let layer = doc.layer_mut(id).unwrap();
+            layer.offset = self.offset;
+            let buffer = layer.buffer_mut().unwrap();
             for y in 0..self.height {
                 for x in 0..self.width {
                     let px = self.pixels[(y * self.width + x) as usize];
@@ -1109,7 +1115,7 @@ mod tests {
             crate::pixel::Rgba32F::new(0.0, 0.0, 1.0, 1.0),
             crate::pixel::Rgba32F::new(1.0, 1.0, 0.0, 1.0),
         ];
-        let mut cmd = PasteImageLayerCmd::new("P", 2, 2, pixels);
+        let mut cmd = PasteImageLayerCmd::new("P", 2, 2, pixels, crate::coord::IVec2::ZERO);
 
         cmd.apply(&mut doc).unwrap();
         let new_id = cmd.new_id.unwrap();
@@ -1128,6 +1134,28 @@ mod tests {
         // Redo (second apply) restores it from soft-removed state.
         cmd.apply(&mut doc).unwrap();
         assert!(doc.order.contains(&new_id));
+    }
+
+    #[test]
+    fn paste_image_layer_cmd_applies_offset() {
+        let mut doc = Document::new(8, 8);
+        let pixels = vec![crate::pixel::Rgba32F::new(1.0, 1.0, 1.0, 1.0); 4];
+        let offset = crate::coord::IVec2::new(3, -2);
+        let mut cmd = PasteImageLayerCmd::new("P", 2, 2, pixels, offset);
+
+        cmd.apply(&mut doc).unwrap();
+        let new_id = cmd.new_id.unwrap();
+        assert_eq!(doc.layer(new_id).unwrap().offset, offset);
+
+        // Pixels live in layer-local space; the offset only moves the layer.
+        let buf = doc.layer(new_id).unwrap().buffer().unwrap();
+        let px = buf.get_pixel(crate::coord::IVec2::new(0, 0));
+        assert!((px.r - 1.0).abs() < 1e-6);
+
+        // Offset survives an undo/redo cycle.
+        cmd.undo(&mut doc);
+        cmd.apply(&mut doc).unwrap();
+        assert_eq!(doc.layer(new_id).unwrap().offset, offset);
     }
 
     #[test]
