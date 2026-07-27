@@ -223,6 +223,15 @@ impl eframe::App for OgreApp {
             || self.state.remove_bg_dialog.is_some()
             || self.state.recovery_prompt.is_some()
             || self.state.command_palette.open;
+        // Type entry session: anchor placed or re-edit loaded. Bare tool keys
+        // must not fire while the user is typing text for the Type tool, even
+        // if the sidebar TextEdit has not taken focus yet.
+        let type_entry_active = self.state.tool_manager.type_entry_active();
+        let suppress_tool_keys = crate::tools::should_suppress_bare_tool_keys(
+            text_focused,
+            dialog_open,
+            type_entry_active,
+        );
         let shortcut = ui.ctx().input(|i| {
             for (chord, action) in &self.state.keymap.effective() {
                 // `matches_exact` resolves the platform command/ctrl alias while
@@ -236,13 +245,14 @@ impl eframe::App for OgreApp {
             if i.key_pressed(egui::Key::Escape) {
                 return Some(shell::Shortcut::CancelActiveTool);
             }
-            // Enter commits the active tool — but only when not typing in a
-            // dialog/text field and with no modifiers held, so it cannot fire a
-            // stray transform commit behind a modal or shadow a chord binding.
+            // Enter commits the active tool. Normally suppressed while a text
+            // field has focus so dialogs/renames keep Enter — but during a Type
+            // entry session Enter must commit even with the sidebar TextEdit
+            // focused (Shift+Enter inserts a newline in that field instead).
             if i.key_pressed(egui::Key::Enter)
                 && !dialog_open
-                && !text_focused
                 && i.modifiers.is_none()
+                && (!text_focused || type_entry_active)
             {
                 return Some(shell::Shortcut::CommitActiveTool);
             }
@@ -256,6 +266,11 @@ impl eframe::App for OgreApp {
                 // active editor-tool interaction.
                 self.state.view = crate::state::AppView::Editor;
             } else if action == shell::Shortcut::CommitActiveTool {
+                if type_entry_active {
+                    // Prevent the Type TextEdit from also consuming Enter.
+                    ui.ctx()
+                        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+                }
                 shell::commit_active_tool(&mut self.state);
             } else if action == shell::Shortcut::Quit {
                 // Close-request interceptor (below) checks for unsaved changes.
@@ -263,9 +278,8 @@ impl eframe::App for OgreApp {
             } else if action.requires_no_text_focus() {
                 // Actions whose triggering key (bare letter, Delete, F2,
                 // Backspace) is also a text-edit key must NOT fire while a text
-                // field or modal has focus. The keymap loop above runs before
-                // the text/dialog gating, so enforce it here.
-                if !text_focused && !dialog_open {
+                // field or modal has focus — or while Type is capturing typing.
+                if !suppress_tool_keys {
                     shell::handle_shortcut(&mut self.state, action);
                 }
             } else {
@@ -275,8 +289,9 @@ impl eframe::App for OgreApp {
 
         // Bare-key tool activation + family cycling (§2.1). Non-configurable;
         // tool keys are a fixed Photoshop-style convention. Suppressed while
-        // typing or while a modal dialog is open, and on OS key auto-repeat.
-        if !text_focused && !dialog_open {
+        // typing, while Type has an entry session, while a modal is open, and
+        // on OS key auto-repeat.
+        if !suppress_tool_keys {
             let tool_key = ui.ctx().input(|i| {
                 for ev in i.events.iter() {
                     if let egui::Event::Key {
@@ -301,11 +316,40 @@ impl eframe::App for OgreApp {
             }
         }
 
+        // Canvas-level Type typing: when a Type entry session is active and no
+        // TextEdit has focus, route text / backspace into the Type tool so the
+        // user can type after placing the anchor without hunting the sidebar.
+        // (When a TextEdit is focused, egui already owns those events.)
+        if type_entry_active && !dialog_open && !ui.ctx().text_edit_focused() {
+            let (typed, backspaces) = ui.ctx().input(|i| {
+                let mut typed = String::new();
+                let mut backspaces = 0usize;
+                for ev in &i.events {
+                    match ev {
+                        egui::Event::Text(t) => typed.push_str(t),
+                        egui::Event::Key {
+                            key: egui::Key::Backspace,
+                            pressed: true,
+                            modifiers,
+                            ..
+                        } if modifiers.is_none() => backspaces += 1,
+                        _ => {}
+                    }
+                }
+                (typed, backspaces)
+            });
+            if !typed.is_empty() {
+                self.state.tool_manager.type_append_text(&typed);
+            }
+            for _ in 0..backspaces {
+                self.state.tool_manager.type_backspace();
+            }
+        }
+
         // Arrow-key nudge: with the Move tool active, each arrow keypress
         // moves the active layer by 1 px. OS auto-repeat is honored so holding
         // a key keeps nudging; consecutive nudges coalesce into one undo step.
-        if !text_focused
-            && !dialog_open
+        if !suppress_tool_keys
             && !self.state.welcome
             && self.state.view == crate::state::AppView::Editor
         {
@@ -338,9 +382,9 @@ impl eframe::App for OgreApp {
         }
 
         // Brush-size adjust: `[` shrinks, `]` grows the active paint tool's
-        // diameter. Bare-key (no modifiers), suppressed while typing or while a
-        // modal is open, and on OS key auto-repeat — matching the tool-key path.
-        if !text_focused && !dialog_open {
+        // diameter. Bare-key (no modifiers), suppressed while typing / Type
+        // entry / modal — matching the tool-key path.
+        if !suppress_tool_keys {
             let size_dir = ui.ctx().input(|i| {
                 for ev in i.events.iter() {
                     if let egui::Event::Key {
@@ -451,11 +495,11 @@ impl eframe::App for OgreApp {
         }
 
         // Tab toggles UI chrome (tools sidebar + layers dock) for a clean
-        // canvas view. Suppressed while typing or in a modal, and on
+        // canvas view. Suppressed while typing, Type entry, or a modal, and on
         // key-repeat. The key is consumed so egui's focus traversal does not
         // also receive it. The hidden state is a transient flag on AppState —
         // it is not persisted and never touches `Preferences`/serde.
-        if !text_focused && !dialog_open && self.state.view == crate::state::AppView::Editor {
+        if !suppress_tool_keys && self.state.view == crate::state::AppView::Editor {
             let tab_pressed = ui.ctx().input(|i| {
                 i.events.iter().any(|ev| {
                     matches!(

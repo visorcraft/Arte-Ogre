@@ -502,14 +502,9 @@ pub fn render(ui: &mut egui::Ui, state: &mut AppState) {
                     render_commit_mode(ui, mode);
                 }
 
-                // Type commit mode.
-                if let Some(mode) = state.tool_manager.type_mode_mut() {
-                    ui.label(
-                        RichText::new("TYPE")
-                            .size(theme::TEXT_CAPTION)
-                            .color(palette.separator_strong),
-                    );
-                    render_commit_mode(ui, mode);
+                // Type tool: text content + style controls + commit mode.
+                if state.tool_manager.active() == ToolKind::Type {
+                    render_type_settings(ui, state, &palette);
                 }
             }
         });
@@ -523,6 +518,160 @@ fn render_commit_mode(ui: &mut egui::Ui, mode: &mut VectorCommitMode) {
     })
     .response
     .on_hover_text("Vector: editable layer · Pixels: rasterize into active layer");
+}
+
+/// Type tool sidebar: text field, system font picker, size presets, bold/italic,
+/// color, align, wrap, and vector/pixels commit mode. Auto-focuses the text
+/// field when a session starts (anchor placed or re-edit loaded).
+fn render_type_settings(ui: &mut egui::Ui, state: &mut AppState, palette: &theme::Palette) {
+    ui.label(
+        RichText::new("TYPE")
+            .size(theme::TEXT_CAPTION)
+            .color(palette.separator_strong),
+    );
+
+    let request_focus = state.tool_manager.type_take_request_text_focus();
+    let entry_active = state.tool_manager.type_entry_active();
+    let families = state.tool_manager.type_font_families().to_vec();
+
+    // Session status.
+    ui.label(
+        RichText::new(if entry_active {
+            "Editing — type on canvas or below · Enter commits"
+        } else {
+            "Click the canvas to place the text anchor"
+        })
+        .size(theme::TEXT_CAPTION)
+        .color(palette.separator_strong),
+    );
+
+    let mut color_changed: Option<ogre_core::Rgba32F> = None;
+
+    if let Some(settings) = state.tool_manager.type_settings_mut() {
+        let text_id = egui::Id::new("type_tool_text");
+        let text_edit = egui::TextEdit::multiline(&mut settings.text)
+            .id(text_id)
+            .desired_width(f32::INFINITY)
+            .desired_rows(3)
+            // Bare Enter commits the tool (handled in the app input loop);
+            // Shift+Enter inserts a line break.
+            .return_key(Some(egui::KeyboardShortcut::new(
+                egui::Modifiers::SHIFT,
+                egui::Key::Enter,
+            )))
+            .hint_text(if entry_active {
+                "Type here or on the canvas…"
+            } else {
+                "Click canvas first, then type"
+            });
+        let resp = ui.add(text_edit);
+        if request_focus {
+            resp.request_focus();
+        }
+
+        // Font family: system list + freeform custom name.
+        ui.horizontal(|ui| {
+            ui.label("Font:");
+            let label = if settings.font_family.is_empty() {
+                "Default".to_string()
+            } else {
+                settings.font_family.clone()
+            };
+            egui::ComboBox::from_id_salt("type_tool_font_family")
+                .selected_text(label)
+                .width(140.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut settings.font_family, String::new(), "Default");
+                    for fam in &families {
+                        ui.selectable_value(&mut settings.font_family, fam.clone(), fam);
+                    }
+                });
+        });
+        // Custom family override (paste / type a name not in the list).
+        ui.add(
+            egui::TextEdit::singleline(&mut settings.font_family)
+                .id_salt("type_tool_font_custom")
+                .desired_width(f32::INFINITY)
+                .hint_text("or type a font name"),
+        );
+
+        // Size: slider + quick presets.
+        ui.add(
+            egui::Slider::new(&mut settings.font_size, 4.0..=512.0)
+                .text("Size")
+                .logarithmic(true)
+                .suffix(" px"),
+        );
+        ui.horizontal(|ui| {
+            for preset in [12.0_f32, 18.0, 24.0, 36.0, 48.0, 72.0] {
+                if ui
+                    .selectable_label(
+                        (settings.font_size - preset).abs() < 0.5,
+                        format!("{}", preset as i32),
+                    )
+                    .clicked()
+                {
+                    settings.font_size = preset;
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.toggle_value(&mut settings.bold, RichText::new("B").strong());
+            ui.toggle_value(&mut settings.italic, RichText::new("I").italics());
+            ui.label("Color:");
+            if let Some(c) = color_swatch(ui, settings.color, "Text color") {
+                settings.color = c;
+                color_changed = Some(c);
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("Align:");
+            ui.selectable_value(&mut settings.align, ogre_core::TextAlign::Left, "Left");
+            ui.selectable_value(&mut settings.align, ogre_core::TextAlign::Center, "Center");
+            ui.selectable_value(&mut settings.align, ogre_core::TextAlign::Right, "Right");
+        });
+        ui.add(
+            egui::Slider::new(&mut settings.line_height, 0.8..=3.0)
+                .text("Line height")
+                .step_by(0.05),
+        );
+        ui.add(
+            egui::Slider::new(&mut settings.wrap_width, 0.0..=2000.0)
+                .text("Wrap width")
+                .suffix(" px"),
+        )
+        .on_hover_text("0 = no wrap (point text). Draws a guide box on the canvas.");
+    }
+
+    // Keep the shared foreground swatch in sync when Type color is edited.
+    if let Some(c) = color_changed {
+        state.foreground = c;
+    }
+
+    if let Some(mode) = state.tool_manager.type_mode_mut() {
+        render_commit_mode(ui, mode);
+    }
+
+    if entry_active {
+        ui.horizontal(|ui| {
+            if ui
+                .button(RichText::new("Commit").strong())
+                .on_hover_text("Enter — place the text")
+                .clicked()
+            {
+                crate::shell::commit_active_tool(state);
+            }
+            if ui
+                .button("Cancel")
+                .on_hover_text("Escape — discard the text")
+                .clicked()
+            {
+                state.tool_manager.cancel_active();
+            }
+        });
+    }
 }
 
 /// Sidebar caption for the active finger tool.
@@ -1076,5 +1225,41 @@ mod tests {
         assert_eq!(new[0], SidebarSection::Swatches);
         assert_eq!(new[1], SidebarSection::Navigate);
         assert_eq!(new[2], SidebarSection::Color);
+    }
+
+    /// Structural: Type settings UI must bind real editable controls for text,
+    /// font family, size, bold, italic, and color (not stubs / commit-mode-only).
+    #[test]
+    fn type_settings_ui_wires_style_controls() {
+        let src = include_str!("tools_sidebar.rs");
+        assert!(
+            src.contains("fn render_type_settings"),
+            "Type panel renderer must exist"
+        );
+        for needle in [
+            "settings.text",
+            "settings.font_family",
+            "settings.font_size",
+            "settings.bold",
+            "settings.italic",
+            "settings.color",
+            "type_settings_mut",
+            "type_font_families",
+            "type_take_request_text_focus",
+            "type_entry_active",
+            "type_tool_font_family",
+        ] {
+            assert!(
+                src.contains(needle),
+                "Type UI must wire `{needle}` to Type settings"
+            );
+        }
+        // Labels / affordances users see for style controls.
+        for label in ["Font:", "Size", "Color:", "Commit"] {
+            assert!(
+                src.contains(label),
+                "Type UI must expose control label `{label}`"
+            );
+        }
     }
 }

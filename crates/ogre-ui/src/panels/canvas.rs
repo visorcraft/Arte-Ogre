@@ -211,7 +211,10 @@ fn handle_canvas_input(
         };
         ui.ctx().set_cursor_icon(icon);
     }
-    let space_held = ui.input(|i| i.key_down(egui::Key::Space));
+    // Temporary Hand via Space must not steal the space character while the
+    // Type tool has an active text-entry session.
+    let type_entry_active = app.state.tool_manager.type_entry_active();
+    let space_held = ui.input(|i| i.key_down(egui::Key::Space)) && !type_entry_active;
     // Temporary Hand: while Space is held the cursor becomes a Grab icon and
     // tool pointer events are suppressed so dragging pans instead of painting.
     // No ToolKind is swapped, so in-progress tool state (brush strokes, polygon

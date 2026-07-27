@@ -10,7 +10,8 @@
 use glam::Vec2;
 use ogre_core::{AddVectorLayerCmd, BrushStrokeCmd, Rgba32F, VectorData};
 use ogre_vector::{
-    layout_and_rasterize, load_system_font_system, FontSystem, SwashCache, TextAlign, TextBlock,
+    layout_and_rasterize, list_font_families, load_system_font_system, FontSystem, SwashCache,
+    TextAlign, TextBlock,
 };
 
 use crate::tools::vector_commit::buffer_to_edits;
@@ -19,8 +20,14 @@ use crate::tools::{Phase, PointerEvent, Tool, VectorCommitMode};
 /// Editable Type-tool settings surfaced in the sidebar.
 #[derive(Clone, Debug)]
 pub struct TypeSettings {
+    /// Font family name (empty = system default / sans-serif).
+    pub font_family: String,
     /// Font size in document pixels.
     pub font_size: f32,
+    /// Prefer a bold face when shaping.
+    pub bold: bool,
+    /// Prefer an italic face when shaping.
+    pub italic: bool,
     /// Text color (tracks the foreground color).
     pub color: Rgba32F,
     /// Horizontal alignment.
@@ -36,7 +43,10 @@ pub struct TypeSettings {
 impl Default for TypeSettings {
     fn default() -> Self {
         Self {
+            font_family: String::new(),
             font_size: 24.0,
+            bold: false,
+            italic: false,
             color: Rgba32F::new(0.0, 0.0, 0.0, 1.0),
             align: TextAlign::Left,
             line_height: 1.2,
@@ -44,6 +54,21 @@ impl Default for TypeSettings {
             text: String::new(),
         }
     }
+}
+
+/// Whether bare tool-family keys (B, V, T, …) and other bare-key tool routing
+/// should be suppressed.
+///
+/// This is the **same gate** the app input loop uses: text focus, open dialogs,
+/// *or* an active Type entry session (anchor placed / re-edit loaded) all block
+/// tool shortcuts so typing cannot steal tools even before the sidebar
+/// `TextEdit` has focus.
+pub fn should_suppress_bare_tool_keys(
+    text_focused: bool,
+    dialog_open: bool,
+    type_entry_active: bool,
+) -> bool {
+    text_focused || dialog_open || type_entry_active
 }
 
 /// Type tool: click to place the anchor, type, Enter to commit.
@@ -66,6 +91,11 @@ pub struct TypeTool {
     /// When re-editing an existing vector text layer, the id of that layer;
     /// commit dispatches [`EditVectorCmd`] instead of [`AddVectorLayerCmd`].
     editing_layer: Option<ogre_core::LayerId>,
+    /// Request the sidebar text field to take focus on the next frame (set when
+    /// an entry session starts via click or re-edit load).
+    request_text_focus: bool,
+    /// Cached unique system font family names (sorted), filled on first request.
+    cached_font_families: Option<Vec<String>>,
 }
 
 impl Default for TypeTool {
@@ -86,6 +116,8 @@ impl TypeTool {
             mode: VectorCommitMode::Vector,
             committed_mode: None,
             editing_layer: None,
+            request_text_focus: false,
+            cached_font_families: None,
         }
     }
 
@@ -94,9 +126,59 @@ impl TypeTool {
         &mut self.settings
     }
 
+    /// Shared access to the settings.
+    pub fn settings(&self) -> &TypeSettings {
+        &self.settings
+    }
+
     /// Mutable access to the commit mode for the sidebar.
     pub fn mode_mut(&mut self) -> &mut VectorCommitMode {
         &mut self.mode
+    }
+
+    /// True while a Type entry session is active (canvas anchor placed or a
+    /// vector text layer loaded for re-edit). Used by the input loop to suppress
+    /// bare tool-family keys and accept Enter-to-commit while typing.
+    pub fn has_active_entry(&self) -> bool {
+        self.anchor.is_some() || self.editing_layer.is_some()
+    }
+
+    /// Whether the sidebar should request focus on the text field this frame.
+    pub fn take_request_text_focus(&mut self) -> bool {
+        let r = self.request_text_focus;
+        self.request_text_focus = false;
+        r
+    }
+
+    /// Append typed characters to the in-progress text (canvas-level typing when
+    /// the sidebar TextEdit is not focused).
+    pub fn append_text(&mut self, s: &str) {
+        if s.is_empty() {
+            return;
+        }
+        self.settings.text.push_str(s);
+    }
+
+    /// Delete the last character (Unicode scalar) from the in-progress text.
+    pub fn backspace(&mut self) {
+        self.settings.text.pop();
+    }
+
+    /// Sorted unique system font family names for the font picker.
+    ///
+    /// Loads the font system on first call and caches the list for the tool's
+    /// lifetime.
+    pub fn font_families(&mut self) -> &[String] {
+        self.ensure_font();
+        if self.cached_font_families.is_none() {
+            let names = self
+                .font_system
+                .as_ref()
+                .map(list_font_families)
+                .unwrap_or_default();
+            self.cached_font_families = Some(names);
+        }
+        self.cached_font_families.as_deref().unwrap_or(&[])
     }
 
     /// The mode that should govern the current in-progress text.
@@ -124,6 +206,7 @@ impl TypeTool {
         self.active_layer = None;
         self.committed_mode = None;
         self.editing_layer = None;
+        self.request_text_focus = false;
         self.settings.text.clear();
     }
 
@@ -166,7 +249,10 @@ impl TypeTool {
             return false;
         };
         self.settings = TypeSettings {
+            font_family: block.font_family.clone(),
             font_size: block.font_size,
+            bold: block.bold,
+            italic: block.italic,
             color: block.color,
             align: block.align,
             line_height: block.line_height,
@@ -178,19 +264,24 @@ impl TypeTool {
         // Re-edit always targets the vector layer; the sidebar mode is
         // irrelevant while editing.
         self.committed_mode = Some(VectorCommitMode::Vector);
+        self.request_text_focus = true;
         true
     }
 
     /// Build an `ogre_core::TextBlock` from the current settings.
-    fn text_block(&self) -> TextBlock {
+    ///
+    /// Public so unit tests exercise the same commit path data as rasterize.
+    pub fn text_block(&self) -> TextBlock {
         TextBlock {
             text: self.settings.text.clone(),
-            font_family: String::new(),
+            font_family: self.settings.font_family.clone(),
             font_size: self.settings.font_size,
             color: self.settings.color,
             align: self.settings.align,
             line_height: self.settings.line_height,
             wrap_width: self.settings.wrap_width,
+            bold: self.settings.bold,
+            italic: self.settings.italic,
         }
     }
 
@@ -297,6 +388,7 @@ impl Tool for TypeTool {
             // paint into.
             if self.commit_mode() == VectorCommitMode::Vector {
                 self.anchor = Some(ev.doc_pos);
+                self.request_text_focus = true;
                 return None;
             }
             if let Some(&layer) = doc.active.as_ref() {
@@ -304,6 +396,7 @@ impl Tool for TypeTool {
                     if !l.locked && l.is_raster() {
                         self.active_layer = Some(layer);
                         self.anchor = Some(ev.doc_pos);
+                        self.request_text_focus = true;
                         return None;
                     }
                 }
@@ -319,7 +412,7 @@ impl Tool for TypeTool {
         viewport: &ogre_gpu::Viewport,
         canvas_rect: egui::Rect,
         pixels_per_point: f32,
-        _time: f64,
+        time: f64,
     ) {
         let Some(anchor) = self.anchor else {
             return;
@@ -329,16 +422,97 @@ impl Tool for TypeTool {
                 + Vec2::new(canvas_rect.min.x, canvas_rect.min.y);
             egui::Pos2::new(v.x, v.y)
         };
+        let to_screen_f = |p: glam::Vec2| -> egui::Pos2 {
+            let v = (p - viewport.pan) * viewport.zoom / pixels_per_point
+                + Vec2::new(canvas_rect.min.x, canvas_rect.min.y);
+            egui::Pos2::new(v.x, v.y)
+        };
         let pos = to_screen(anchor);
-        // Draw a blinking text caret.
-        let h = (self.settings.font_size * viewport.zoom / pixels_per_point).max(8.0);
-        painter.line_segment(
-            [
-                egui::Pos2::new(pos.x, pos.y),
-                egui::Pos2::new(pos.x, pos.y + h),
-            ],
-            egui::Stroke::new(1.5, egui::Color32::WHITE),
+        let screen_size =
+            (self.settings.font_size * viewport.zoom / pixels_per_point).clamp(6.0, 400.0);
+        let line_h = (screen_size * self.settings.line_height).max(screen_size);
+
+        // Text colour for the live preview (sRGB-ish display of linear swatch).
+        let c = self.settings.color;
+        let to_u8 = |x: f32| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let text_color = egui::Color32::from_rgba_unmultiplied(
+            to_u8(c.r),
+            to_u8(c.g),
+            to_u8(c.b),
+            to_u8(c.a.max(0.85)),
         );
+
+        // Wrap-width guide (document pixels → screen).
+        if self.settings.wrap_width > 0.0 {
+            let w = self.settings.wrap_width;
+            // Estimate height from line count for a helpful box, not exact metrics.
+            let lines = self.settings.text.lines().count().max(1) as f32;
+            let h_doc = self.settings.font_size * self.settings.line_height * lines;
+            let tl = to_screen_f(anchor.as_vec2());
+            let br = to_screen_f(anchor.as_vec2() + glam::Vec2::new(w, h_doc));
+            let rect = egui::Rect::from_min_max(tl, br);
+            painter.rect_stroke(
+                rect,
+                0.0,
+                egui::Stroke::new(1.0, egui::Color32::from_white_alpha(90)),
+                egui::StrokeKind::Outside,
+            );
+        }
+
+        // Live preview of the typed string at the anchor. Uses egui layout so
+        // the user sees content/position/size/style while typing; commit still
+        // shapes with cosmic-text + the chosen family/weight/style.
+        let preview_format = egui::TextFormat {
+            font_id: egui::FontId::proportional(screen_size),
+            color: text_color,
+            italics: self.settings.italic,
+            line_height: Some(line_h),
+            ..Default::default()
+        };
+        let layout_line = |line: &str| -> std::sync::Arc<egui::Galley> {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(line, 0.0, preview_format.clone());
+            painter.layout_job(job)
+        };
+
+        let mut last_line_width = 0.0f32;
+        if !self.settings.text.is_empty() {
+            let mut y = pos.y;
+            for line in self.settings.text.split('\n') {
+                let galley = layout_line(line);
+                last_line_width = galley.size().x;
+                let x = match self.settings.align {
+                    TextAlign::Left => pos.x,
+                    TextAlign::Center => pos.x - galley.size().x * 0.5,
+                    TextAlign::Right => pos.x - galley.size().x,
+                };
+                // Fake-bold: second pass offset (egui has no weight axis).
+                if self.settings.bold {
+                    painter.galley(egui::pos2(x + 0.7, y), galley.clone(), text_color);
+                }
+                painter.galley(egui::pos2(x, y), galley, text_color);
+                y += line_h;
+            }
+        }
+
+        // Blinking caret at the end of the last line.
+        let blink_on = (time * 2.0).fract() < 0.55;
+        if blink_on {
+            let caret_x = match self.settings.align {
+                TextAlign::Left => pos.x + last_line_width,
+                TextAlign::Center => pos.x + last_line_width * 0.5,
+                TextAlign::Right => pos.x,
+            };
+            let lines = self.settings.text.lines().count().max(1);
+            let caret_y = pos.y + line_h * (lines.saturating_sub(1) as f32);
+            painter.line_segment(
+                [
+                    egui::Pos2::new(caret_x, caret_y),
+                    egui::Pos2::new(caret_x, caret_y + screen_size),
+                ],
+                egui::Stroke::new(1.5, egui::Color32::WHITE),
+            );
+        }
     }
 
     fn commit(&mut self, doc: &ogre_core::Document) -> Option<Box<dyn ogre_core::Command>> {
@@ -377,6 +551,7 @@ mod tests {
         let tool = TypeTool::new();
         assert!(tool.anchor.is_none());
         assert!(tool.settings.text.is_empty());
+        assert!(!tool.has_active_entry());
     }
 
     #[test]
@@ -390,6 +565,8 @@ mod tests {
         );
         assert_eq!(tool.anchor, Some(glam::IVec2::new(20, 30)));
         assert_eq!(tool.active_layer, doc.active);
+        assert!(tool.has_active_entry());
+        assert!(tool.take_request_text_focus());
     }
 
     #[test]
@@ -405,6 +582,7 @@ mod tests {
         tool.cancel();
         assert!(tool.anchor.is_none());
         assert!(tool.settings.text.is_empty());
+        assert!(!tool.has_active_entry());
     }
 
     #[test]
@@ -507,12 +685,14 @@ mod tests {
         let _bg = doc.add_raster_layer("Bg");
         let block = ogre_core::TextBlock {
             text: "Original".into(),
+            font_family: "DejaVu Sans".into(),
             font_size: 28.0,
             color: Rgba32F::new(1.0, 0.0, 0.0, 1.0),
             line_height: 1.1,
             align: ogre_core::TextAlign::Center,
             wrap_width: 0.0,
-            ..Default::default()
+            bold: true,
+            italic: true,
         };
         let data = ogre_core::VectorData {
             paths: Vec::new(),
@@ -532,15 +712,21 @@ mod tests {
             "loading an active vector text layer should succeed"
         );
         assert_eq!(tool.settings.text, "Original");
+        assert_eq!(tool.settings.font_family, "DejaVu Sans");
         assert_eq!(tool.settings.font_size, 28.0);
+        assert!(tool.settings.bold);
+        assert!(tool.settings.italic);
         assert_eq!(tool.settings.color, Rgba32F::new(1.0, 0.0, 0.0, 1.0));
         assert_eq!(tool.settings.align, ogre_core::TextAlign::Center);
         assert_eq!(tool.settings.line_height, 1.1);
         assert_eq!(tool.anchor, Some(glam::IVec2::new(20, 30)));
         assert_eq!(tool.editing_layer, Some(text_id));
+        assert!(tool.has_active_entry());
+        assert!(tool.take_request_text_focus());
 
         // Edit the text and commit → EditVectorCmd on the same layer.
         tool.settings.text = "Edited".into();
+        tool.settings.bold = false;
         let mut cmd = tool.commit(&doc).expect("re-edit should commit");
         assert_eq!(cmd.label(), "Edit vector");
         let mut doc = doc;
@@ -552,8 +738,12 @@ mod tests {
         let ogre_core::LayerContent::Vector(data) = &layer.content else {
             panic!("layer must still be vector");
         };
-        assert_eq!(data.text.as_ref().unwrap().text, "Edited");
-        assert_eq!(data.text.as_ref().unwrap().font_size, 28.0);
+        let stored = data.text.as_ref().unwrap();
+        assert_eq!(stored.text, "Edited");
+        assert_eq!(stored.font_size, 28.0);
+        assert_eq!(stored.font_family, "DejaVu Sans");
+        assert!(!stored.bold);
+        assert!(stored.italic);
         // The tool cleared its re-edit state after committing.
         let tool = TypeTool::new();
         assert!(tool.editing_layer.is_none());
@@ -651,5 +841,109 @@ mod tests {
             let mut doc = doc;
             cmd.apply(&mut doc).unwrap();
         }
+    }
+
+    #[test]
+    fn text_block_carries_style_fields_from_settings() {
+        let mut tool = TypeTool::new();
+        tool.settings.font_family = "Noto Sans".into();
+        tool.settings.font_size = 42.0;
+        tool.settings.bold = true;
+        tool.settings.italic = true;
+        tool.settings.text = "Hi".into();
+        let block = tool.text_block();
+        assert_eq!(block.font_family, "Noto Sans");
+        assert_eq!(block.font_size, 42.0);
+        assert!(block.bold);
+        assert!(block.italic);
+        assert_eq!(block.text, "Hi");
+    }
+
+    #[test]
+    fn style_round_trip_through_vector_commit() {
+        let doc = doc_with_raster();
+        let mut tool = TypeTool::new();
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(glam::IVec2::new(10, 10), Phase::Down, egui::Modifiers::NONE),
+        );
+        tool.settings.text = "Styled".into();
+        tool.settings.font_family = "Liberation Sans".into();
+        tool.settings.font_size = 36.0;
+        tool.settings.bold = true;
+        tool.settings.italic = true;
+        // text_block is what commit stores (raster may no-op without fonts).
+        let block = tool.text_block();
+        assert!(block.bold && block.italic);
+        assert_eq!(block.font_family, "Liberation Sans");
+        assert_eq!(block.font_size, 36.0);
+
+        // If system fonts exist, full commit should persist the same fields.
+        if let Some(mut cmd) = tool.commit(&doc) {
+            let mut doc = doc;
+            cmd.apply(&mut doc).unwrap();
+            let layer = doc.layer(doc.active.unwrap()).unwrap();
+            let ogre_core::LayerContent::Vector(data) = &layer.content else {
+                panic!("expected vector layer");
+            };
+            let stored = data.text.as_ref().expect("stored text");
+            assert_eq!(stored.font_family, "Liberation Sans");
+            assert_eq!(stored.font_size, 36.0);
+            assert!(stored.bold);
+            assert!(stored.italic);
+            assert_eq!(stored.text, "Styled");
+        }
+    }
+
+    #[test]
+    fn bare_tool_keys_suppressed_during_type_entry() {
+        // Idle Type tool: only text focus / dialog suppress keys.
+        assert!(!should_suppress_bare_tool_keys(false, false, false));
+        assert!(should_suppress_bare_tool_keys(true, false, false));
+        assert!(should_suppress_bare_tool_keys(false, true, false));
+        // Active entry session: suppress even without text focus.
+        assert!(should_suppress_bare_tool_keys(false, false, true));
+        assert!(should_suppress_bare_tool_keys(true, false, true));
+    }
+
+    #[test]
+    fn has_active_entry_tracks_anchor_and_re_edit() {
+        let doc = doc_with_raster();
+        let mut tool = TypeTool::new();
+        assert!(!tool.has_active_entry());
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(glam::IVec2::new(1, 1), Phase::Down, egui::Modifiers::NONE),
+        );
+        assert!(tool.has_active_entry());
+        tool.cancel();
+        assert!(!tool.has_active_entry());
+    }
+
+    #[test]
+    fn canvas_typing_append_and_backspace() {
+        let mut tool = TypeTool::new();
+        tool.append_text("Hi");
+        assert_eq!(tool.settings.text, "Hi");
+        tool.append_text("!");
+        assert_eq!(tool.settings.text, "Hi!");
+        tool.backspace();
+        assert_eq!(tool.settings.text, "Hi");
+        tool.backspace();
+        tool.backspace();
+        tool.backspace(); // extra pops are safe
+        assert!(tool.settings.text.is_empty());
+    }
+
+    #[test]
+    fn font_families_lists_system_fonts_when_available() {
+        let mut tool = TypeTool::new();
+        let families = tool.font_families().to_vec();
+        // Cached: second call returns the same slice length.
+        assert_eq!(tool.font_families().len(), families.len());
+        // Sorted unique if non-empty.
+        let mut sorted = families.clone();
+        sorted.sort();
+        assert_eq!(families, sorted);
     }
 }

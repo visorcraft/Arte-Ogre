@@ -54,7 +54,7 @@ pub use shape::{ShapeKind, ShapeTool};
 pub use slice::SliceTool;
 pub use smudge::SmudgeTool;
 pub use transform::{FreeTransformTool, MoveTool};
-pub use type_tool::TypeTool;
+pub use type_tool::{should_suppress_bare_tool_keys, TypeSettings, TypeTool};
 pub use zoom::ZoomTool;
 
 /// The current tool mode.
@@ -1338,6 +1338,50 @@ impl ToolManager {
         match self.active {
             ToolKind::Type => Some(self.type_tool.mode_mut()),
             _ => None,
+        }
+    }
+
+    /// Mutable access to the Type tool's settings when Type is active.
+    pub fn type_settings_mut(&mut self) -> Option<&mut TypeSettings> {
+        match self.active {
+            ToolKind::Type => Some(self.type_tool.settings_mut()),
+            _ => None,
+        }
+    }
+
+    /// Whether the Type tool has an active entry session (anchor placed or
+    /// re-edit loaded). Used by the input loop to suppress bare tool keys.
+    pub fn type_entry_active(&self) -> bool {
+        self.active == ToolKind::Type && self.type_tool.has_active_entry()
+    }
+
+    /// Take-and-clear the sidebar text-focus request from the Type tool.
+    pub fn type_take_request_text_focus(&mut self) -> bool {
+        match self.active {
+            ToolKind::Type => self.type_tool.take_request_text_focus(),
+            _ => false,
+        }
+    }
+
+    /// Append characters into the Type tool when Type is active (canvas typing).
+    pub fn type_append_text(&mut self, s: &str) {
+        if self.active == ToolKind::Type {
+            self.type_tool.append_text(s);
+        }
+    }
+
+    /// Backspace one character in the Type tool when Type is active.
+    pub fn type_backspace(&mut self) {
+        if self.active == ToolKind::Type {
+            self.type_tool.backspace();
+        }
+    }
+
+    /// System font family names for the Type font picker (empty if Type inactive).
+    pub fn type_font_families(&mut self) -> &[String] {
+        match self.active {
+            ToolKind::Type => self.type_tool.font_families(),
+            _ => &[],
         }
     }
 

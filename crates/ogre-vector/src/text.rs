@@ -10,11 +10,31 @@
 //! The [`TextBlock`] and [`TextAlign`] types live in `ogre-core` because they
 //! are part of a vector layer's serializable source data.
 
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight};
 use ogre_core::coord::IVec2;
 use ogre_core::pixel::Rgba32F;
 use ogre_core::text::{TextAlign, TextBlock};
 use ogre_core::TiledBuffer;
+
+/// Build cosmic-text [`Attrs`] from a [`TextBlock`]'s family / weight / style.
+///
+/// Shared by rasterization and unit tests so the weight/style wiring is not
+/// reimplemented in the test suite.
+pub fn text_block_attrs<'a>(block: &'a TextBlock) -> Attrs<'a> {
+    let family = if block.font_family.is_empty() {
+        Family::SansSerif
+    } else {
+        Family::Name(block.font_family.as_str())
+    };
+    let mut attrs = Attrs::new().family(family);
+    if block.bold {
+        attrs = attrs.weight(Weight::BOLD);
+    }
+    if block.italic {
+        attrs = attrs.style(Style::Italic);
+    }
+    attrs
+}
 
 /// Layout and rasterize a [`TextBlock`] into a document-space [`TiledBuffer`].
 ///
@@ -35,12 +55,7 @@ pub fn layout_and_rasterize(
     let metrics = Metrics::new(block.font_size, block.line_height_px());
     let mut buffer = Buffer::new(font_system, metrics);
 
-    let family = if block.font_family.is_empty() {
-        Family::SansSerif
-    } else {
-        Family::Name(&block.font_family)
-    };
-    let attrs = Attrs::new().family(family);
+    let attrs = text_block_attrs(block);
     let align = match block.align {
         TextAlign::Left => cosmic_text::Align::Left,
         TextAlign::Center => cosmic_text::Align::Center,
@@ -117,6 +132,22 @@ pub fn load_system_font_system() -> Option<FontSystem> {
     }
 }
 
+/// Unique typographic family names available in `font_system`, sorted.
+///
+/// Used by the Type tool's font picker. Empty when no faces are loaded.
+pub fn list_font_families(font_system: &FontSystem) -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    for face in font_system.db().faces() {
+        for (name, _lang) in &face.families {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                names.insert(trimmed.to_string());
+            }
+        }
+    }
+    names.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +208,70 @@ mod tests {
             narrow_w <= wide_w * 0.6,
             "wrapped text should be narrower than unwrapped"
         );
+    }
+
+    #[test]
+    fn text_block_attrs_apply_family_weight_style() {
+        let plain = TextBlock {
+            text: "x".into(),
+            font_family: String::new(),
+            bold: false,
+            italic: false,
+            ..Default::default()
+        };
+        let attrs = text_block_attrs(&plain);
+        assert_eq!(attrs.family, Family::SansSerif);
+        assert_eq!(attrs.weight, Weight::NORMAL);
+        assert_eq!(attrs.style, Style::Normal);
+
+        let styled = TextBlock {
+            text: "x".into(),
+            font_family: "DejaVu Sans".into(),
+            bold: true,
+            italic: true,
+            ..Default::default()
+        };
+        let attrs = text_block_attrs(&styled);
+        assert_eq!(attrs.family, Family::Name("DejaVu Sans"));
+        assert_eq!(attrs.weight, Weight::BOLD);
+        assert_eq!(attrs.style, Style::Italic);
+    }
+
+    #[test]
+    fn bold_italic_rasterize_still_yields_pixels_when_fonts_exist() {
+        let (mut fs, mut cache) = font_system_or_skip();
+        if fs.db().faces().count() == 0 {
+            return;
+        }
+        let block = TextBlock {
+            text: "Bi".into(),
+            font_size: 28.0,
+            bold: true,
+            italic: true,
+            color: Rgba32F::new(0.0, 0.0, 0.0, 1.0),
+            ..Default::default()
+        };
+        let (buf, (w, h)) = layout_and_rasterize(&mut fs, &mut cache, &block, None);
+        assert!(
+            !buf.is_empty(),
+            "bold+italic non-empty text should still rasterize when fonts exist"
+        );
+        assert!(w > 0.0 && h > 0.0);
+    }
+
+    #[test]
+    fn list_font_families_is_sorted_unique() {
+        let (fs, _) = font_system_or_skip();
+        let families = list_font_families(&fs);
+        // Sorted (BTreeSet).
+        let mut sorted = families.clone();
+        sorted.sort();
+        assert_eq!(families, sorted);
+        // Unique.
+        let mut seen = std::collections::HashSet::new();
+        for f in &families {
+            assert!(seen.insert(f.as_str()), "duplicate family {f}");
+            assert!(!f.trim().is_empty());
+        }
     }
 }

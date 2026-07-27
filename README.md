@@ -196,7 +196,7 @@ After install, launch with `arte-ogre [image.png …]`.
 | **Color** | `lcms2` (ICC) |
 | **AI matte** | IS-Net via pure-Rust ONNX (`tract`), optional `ml` feature |
 | **Plugins** | `wasmtime` (WASM) + `mlua` (Lua), sandboxed |
-| **Version** | Workspace crates at `1.7.2` (see `Cargo.toml` members) |
+| **Version** | Workspace crates at `1.8.0` (see `Cargo.toml` members) |
 
 The crates form one dependency chain: `ogre-core` → `ogre-gpu` → `ogre-ui` →
 `ogre` (binary), with `ogre-io`, `ogre-plugins`, and `ogre-vector` alongside.

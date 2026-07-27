@@ -19,6 +19,8 @@ pub use rasterize::{
     bezpath_to_polygon, ellipse_bezpath, rasterize_bezpath, rounded_rect_bezpath, writes_to_buffer,
     Fill, Stroke,
 };
-pub use text::{layout_and_rasterize, load_system_font_system};
+pub use text::{
+    layout_and_rasterize, list_font_families, load_system_font_system, text_block_attrs,
+};
 // TextBlock/TextAlign live in ogre-core because they are document data.
 pub use ogre_core::text::{TextAlign, TextBlock};
