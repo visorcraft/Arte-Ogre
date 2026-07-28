@@ -3,8 +3,9 @@
 
 //! Plugin host for Arte Ogre.
 //!
-//! Defines the stable WIT contract and a `wasmtime`-based host harness for
-//! running untrusted tile-filter plugins.
+//! Provides discovery and sandboxed Lua/WASM execution. The current WASM host
+//! uses the raw core-module ABI documented in `docs/PLUGINS.md`; the WIT file
+//! records the intended semantic component interface.
 
 pub mod filter;
 pub mod manager;

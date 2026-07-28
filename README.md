@@ -47,9 +47,9 @@ It is built around three goals:
   light**. Every GPU result is golden-tested against a CPU reference compositor
   within `1e-4` per channel; the killer cut/copy feature is pinned by a
   byte-identical round-trip test.
-- **Offline and yours.** Pure-Rust core, no network calls, no telemetry. The
-  optional AI background-refine model is the only thing that ever downloads, and
-  only when you ask for it.
+- **Private by default.** No telemetry. Editing stays local. Network access
+  happens only when you explicitly check for updates or ask the optional AI
+  background-refine feature to download its model.
 
 ### What it does today
 
@@ -59,26 +59,47 @@ It is built around three goals:
   document as a card, reorder root layers by dragging thumbnails, move or copy
   layers between documents, and double-click a thumbnail to jump back to the
   editor with that layer active.
-- **Selection** - Rectangle, Ellipse, Polygon Lasso (live), Freehand Lasso, and
-  a perceptual Magic Wand, all with real marching-ants outlines, Select Inverse,
-  and Copy/Cut to a new layer or the clipboard.
+- **Selection** - Rectangle, Ellipse, Polygon, Freehand, and Magnetic Lasso;
+  Magic Wand and Quick Selection; marching-ants outlines; selection arithmetic,
+  feather/grow/shrink, clipboard actions, and exact-position Copy/Cut to a new
+  layer.
 - **Paint** - brush, pencil, eraser (pressure-aware), paint bucket, eyedropper,
   tiled brush/stroke rasterization, and brush-engine tools for clone/heal,
   blur/sharpen/smudge, dodge/burn/sponge, and color replacement.
 - **Vector** - Shape, Pen, and Type create **non-destructive, re-editable vector
   layers** (a per-tool Vector/Pixels toggle); select a vector layer to load it
   back into the tool and edit in place.
-- **Transform** - move, free transform (scale/rotate/skew), crop.
+- **Transform** - move, crop, and free transform with scale, rotate, skew,
+  distort, perspective, and warp modes.
 - **Remove Background** - lift a solid or checkerboard "fake transparency" matte
   to true alpha, losslessly, with edge defringe - plus an optional AI matte
   refine (IS-Net via pure-Rust ONNX) for fine hair.
 - **Filters & color** - GPU compute filters with a CPU fallback; ICC color via
   `lcms2`.
-- **Files** - native `.ogre` (zstd tiles + msgpack), `.ora` interchange,
-  PSD / EXR / TIFF / PNG / JPEG / WebP via the `image` crate, and SVG
-  import/export (raster, vector, or hybrid) via `resvg`/`usvg`.
-- **Extensible** - sandboxed tile filters via `wasmtime` (stable WIT contract,
-  fuel- and memory-bounded) and `mlua` Lua scripting.
+- **Files** - native `.ogre` (zstd tiles + msgpack), `.ora` interchange, PSD
+  import, EXR / TIFF / PNG / JPEG / WebP raster I/O, BMP import, and SVG
+  import/export via `resvg`/`usvg`. See the
+  [format compatibility guide](docs/FILE_FORMATS.md) before interchange work.
+- **Extensible** - sandboxed, undoable tile filters through `wasmtime` and
+  document scripts through `mlua`, with fuel, instruction, memory, and timeout
+  limits. See the [plugin author guide](docs/PLUGINS.md).
+
+---
+
+## Quick start
+
+Arte Ogre currently targets Linux with a Vulkan-capable GPU.
+
+1. Download the AppImage from the
+   [latest release](https://github.com/visorcraft/Arte-Ogre/releases/latest).
+2. Make it executable: `chmod +x Arte_Ogre-x86_64.AppImage`.
+3. Run it: `./Arte_Ogre-x86_64.AppImage`.
+4. Use **File → New** or **File → Open**. Save layered work as `.ogre`; use
+   **Export** for a flattened deliverable.
+
+The current renderer and native loader support canvases up to 8192×8192. Read
+the [user guide](docs/USER_GUIDE.md) for the full interface, tools, shortcuts,
+recovery, privacy, and limits.
 
 ---
 
@@ -100,8 +121,10 @@ git clone https://github.com/visorcraft/Arte-Ogre.git
 cd Arte-Ogre
 
 cargo run -p ogre                 # launch the editor (eframe + wgpu)
-cargo run -p ogre -- image.png    # open a file on startup
 ```
+
+Arte Ogre currently has no command-line file or option interface. Open files
+with **File → Open** or drag one into the window. Drag-and-drop requires X11.
 
 **Quality gate** (run before any commit; warnings are hard errors)
 
@@ -174,7 +197,7 @@ install -Dm755 Arte_Ogre-x86_64.AppImage ~/.local/bin/arte-ogre
 > resolves: copy `arte-ogre.desktop` to `~/.local/share/applications/` and the
 > 256×256 icon to `~/.local/share/icons/hicolor/256x256/apps/arte-ogre.png`.
 
-After install, launch with `arte-ogre [image.png …]`.
+After install, launch with `arte-ogre`, then use **File → Open**.
 
 > **Linux backend.** Defaults to winit's native backend (Wayland on a Wayland
 > session - smooth resize). Set `ARTE_OGRE_X11=1` to force X11/XWayland, the
@@ -196,7 +219,7 @@ After install, launch with `arte-ogre [image.png …]`.
 | **Color** | `lcms2` (ICC) |
 | **AI matte** | IS-Net via pure-Rust ONNX (`tract`), optional `ml` feature |
 | **Plugins** | `wasmtime` (WASM) + `mlua` (Lua), sandboxed |
-| **Version** | Workspace crates at `1.8.1` (see `Cargo.toml` members) |
+| **Version** | Workspace crates at `1.8.2` (see `Cargo.toml` members) |
 
 The crates form one dependency chain: `ogre-core` → `ogre-gpu` → `ogre-ui` →
 `ogre` (binary), with `ogre-io`, `ogre-plugins`, and `ogre-vector` alongside.
@@ -226,8 +249,22 @@ don't open a public issue.
 
 ## Documentation
 
-- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
-- [Credits](CREDITS.md) · [Third-party licenses](THIRD_PARTY_LICENSES.md)
+- **[User guide](docs/USER_GUIDE.md)** - install, interface, every tool family,
+  layers, selections, shortcuts, settings, recovery, privacy, and limits.
+- **[File formats](docs/FILE_FORMATS.md)** - open/save/export matrix, fidelity,
+  color handling, and known interchange limits.
+- **[Architecture](docs/ARCHITECTURE.md)** - crate map, data model, coordinates,
+  mutation flow, rendering, workers, and correctness invariants.
+- **[Plugin author guide](docs/PLUGINS.md)** - bundle format, Lua API, WASM ABI,
+  sandbox limits, installation, and debugging.
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - GPU startup, Wayland/X11,
+  recovery, model downloads, plugins, and diagnostics.
+- **[Contributing](CONTRIBUTING.md)** - development setup, test matrix, coding
+  rules, and release packaging.
+- **[Security policy](SECURITY.md)** - supported versions, private reporting,
+  scope, network behavior, and hardening.
+- **[Credits](CREDITS.md)** and
+  **[third-party licenses](THIRD_PARTY_LICENSES.md)**.
 
 ---
 

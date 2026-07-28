@@ -1,7 +1,7 @@
 # Security Policy
 
-Arte Ogre is an offline, no-telemetry desktop image editor. It still parses
-untrusted input - image files, native `.ogre`/`.ora` documents, and sandboxed
+Arte Ogre is a local-first, no-telemetry desktop image editor. It still parses
+untrusted input - image files, native `.ogre`/`.ora` documents, SVG, and local
 WASM/Lua plugins - so we take security reports seriously.
 
 ## Supported versions
@@ -39,19 +39,24 @@ public disclosure; we're happy to credit you in the release notes.
 
 In scope:
 
-- **File loaders** (`ogre-io`) - `.ogre`, `.ora`, PSD, EXR, TIFF, PNG, JPEG,
-  WebP. Maliciously crafted files that cause crashes, unbounded memory or CPU
-  use, or memory-safety issues.
+- **File loaders** (`ogre-io`) - `.ogre`, `.ora`, PSD, SVG/SVGZ, EXR, TIFF,
+  PNG, JPEG, WebP, BMP, and other enabled raster decoders. Maliciously crafted
+  files that cause crashes, unbounded memory or CPU use, path traversal, or
+  memory-safety issues.
 - **Plugin sandbox** (`ogre-plugins`) - escapes from the `wasmtime` fuel/memory
-  caps or the Lua sandbox.
+  caps, WASM capability boundary, or Lua sandbox.
 - **The engine** (`ogre-core`, `ogre-gpu`) - memory-safety or correctness bugs
   reachable from untrusted input.
+- **Network boundary** - update/model requests that upload document data,
+  accept an unverified model, or write outside their intended cache path.
 
 Out of scope:
 
-- The optional AI matte-refine model download (only fetched when you ask for
-  it) and third-party dependency advisories already tracked upstream.
-- Issues that require a local attacker who already controls your machine.
+- Availability of the GitHub API or the upstream model host.
+- Third-party dependency advisories already tracked and fixed upstream, unless
+  Arte Ogre exposes additional impact.
+- Issues that require a local attacker who already controls your account and
+  can replace application or plugin files.
 
 ## Hardening notes
 
@@ -60,5 +65,24 @@ Out of scope:
   load, rejecting oversized or malformed manifests instead of allocating
   blindly.
 - Tile decoding caps the decompressed size of each tile.
-- Plugins run under a `wasmtime` fuel limit and a 512 MiB memory cap.
-- No network calls, no telemetry.
+- WASM plugins receive no host imports or WASI capabilities. They run under a
+  fuel limit and a 512 MiB linear-memory cap.
+- Lua exposes only constrained document commands. Filesystem, process, package,
+  dynamic-code-loading, and debug globals are removed; memory is capped at
+  64 MiB and execution at 10,000,000 instructions.
+- Plugin manifests are capped at 64 KiB and entry values must be contained
+  relative paths with no absolute path or `..` component.
+- AI model downloads stream to a `.part` file, require the expected size and a
+  pinned SHA-256 checksum, then install by atomic rename.
+- Arte Ogre has no telemetry.
+
+## Network behavior
+
+Normal editing, plugins, save/export, and model inference are local. Network
+access happens only after an explicit user action:
+
+- **Help → Check for Updates** queries the GitHub API with a short timeout.
+- First use of **Refine edges with AI** downloads the pinned IS-Net model from
+  GitHub Releases.
+
+Neither path uploads document or image content.

@@ -47,6 +47,44 @@ PRs that touch UI behavior should include a screenshot or a short
 recording. PRs that touch the compositor, the file formats, or the tile
 engine should call out which invariant tests cover the change.
 
+## Development setup
+
+Prerequisites:
+
+- Current stable Rust toolchain with Cargo
+- Linux development environment
+- Vulkan-capable GPU and working Vulkan drivers for interactive/GPU testing
+- `cargo-about` only when regenerating third-party license files
+- `linuxdeploy`, `appimagetool`, and ImageMagick only for AppImage packaging
+
+Clone and launch:
+
+```sh
+git clone https://github.com/visorcraft/Arte-Ogre.git
+cd Arte-Ogre
+cargo run -p ogre
+```
+
+Arte Ogre currently has no command-line file or option interface. Open test
+files with **File → Open**.
+
+Useful builds:
+
+```sh
+cargo build --release -p ogre
+cargo run -p ogre --no-default-features
+```
+
+The first command produces a production-mode binary for testing, not a
+shippable release. The second omits optional AI matte refinement.
+
+Feature flags:
+
+- `ogre`, `ogre-ui`, and `ogre-io`: `ml` enables IS-Net matte refinement
+  through `tract-onnx`. It is enabled by default in the shipped binary.
+- `ogre-io`: `svg` enables SVG import/export and is enabled by default.
+- `ogre-gpu`: `egui` enables `CanvasRenderer::register_with_egui`.
+
 ## Development workflow
 
 Arte Ogre follows a **test-driven, checkbox-driven** flow:
@@ -63,13 +101,38 @@ Every change must pass the per-crate gate - **warnings are hard errors**:
 cargo test   -p <crate>
 cargo clippy -p <crate> --all-targets -- -D warnings
 cargo fmt    --check
-cargo doc    -p <crate>
+cargo doc    -p <crate>          # use --no-deps to skip dependency docs
 ```
 
 `scripts/gate.sh` wraps test + clippy + fmt for `ogre-core`. `ogre-core`
 is `#![deny(unsafe_code)]`. Proptest suites run with `PROPTEST_CASES=1024`;
 release-only perf/golden tests are `#[ignore]`'d and run with `--release
 --ignored`.
+
+Exact extended checks:
+
+```sh
+PROPTEST_CASES=1024 cargo test -p ogre-core
+cargo test -p ogre-gpu --release --test composite_perf -- --ignored
+cargo machete
+```
+
+High-value invariant tests:
+
+```sh
+cargo test -p ogre-core copy_to_new_layer_retains_exact_position
+cargo test -p ogre-core --test killer_feature cut_move_undo_redo_loop_is_byte_identical
+cargo test -p ogre-core --test vector_parity
+```
+
+For a cross-crate change, use the workspace gate:
+
+```sh
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --check
+cargo doc --workspace --no-deps
+```
 
 `Cargo.lock` is tracked - Arte Ogre ships a binary app - so commit lockfile
 changes alongside the dependency change that caused them. After a dependency
@@ -98,6 +161,9 @@ ogre-core ─► ogre-gpu ─► ogre-ui ─► ogre (binary)
 - **`ogre-plugins`** - sandboxed WASM (`wasmtime`) and Lua (`mlua`) filters.
 - **`ogre-vector`** - vector path rasterization.
 
+See [Architecture](docs/ARCHITECTURE.md) for the data model, coordinates,
+command flow, renderer, background workers, and change map.
+
 ## Engine invariants (violating these = silent correctness bugs)
 
 - **Single mutation path.** Every document edit is an `ogre-core` `Command`
@@ -124,6 +190,60 @@ ogre-core ─► ogre-gpu ─► ogre-ui ─► ogre (binary)
 - Prefer the smallest change that works. Match the style of the surrounding
   code.
 - Document public items; `cargo doc` must build clean.
+
+## Documentation changes
+
+Public behavior belongs in the public docs:
+
+- User-visible workflow or shortcut: [User Guide](docs/USER_GUIDE.md)
+- Import/export behavior: [File Formats](docs/FILE_FORMATS.md)
+- Crate, data-flow, or invariant change: [Architecture](docs/ARCHITECTURE.md)
+- Plugin manifest, Lua API, or WASM ABI: [Plugin Author Guide](docs/PLUGINS.md)
+- Known failure or diagnostic: [Troubleshooting](docs/TROUBLESHOOTING.md)
+- Landing-page claim or setup path: [README](README.md)
+
+Keep limitations explicit. Do not promise an interface that executable code
+does not implement. Check relative links and run `git diff --check`.
+
+## Release packaging
+
+A release is the single-file AppImage built in release mode. A bare
+`target/release/ogre` binary is not a shippable Arte Ogre release.
+
+Before packaging:
+
+1. Start from a clean checkout of the intended release commit.
+2. Update crate versions consistently and refresh `Cargo.lock`.
+3. Run the workspace quality gate above.
+4. If dependencies changed, run `scripts/licenses.sh` and review
+   `CREDITS.md` plus `THIRD_PARTY_LICENSES.md`.
+5. Review README version/feature claims and public compatibility docs.
+
+Build:
+
+```sh
+scripts/build_appimage.sh
+```
+
+The script:
+
+- Runs `cargo build --release -p ogre`
+- Installs the binary inside the AppDir as `arte-ogre`
+- Builds the 256×256 icon from `assets/ArteOgre.png`
+- Installs the `arte-ogre.desktop` entry
+- Runs `linuxdeploy` with `NO_STRIP=1` for `DT_RELR` compatibility
+- Produces `target/appimage/Arte_Ogre-x86_64.AppImage`
+
+Smoke-test the exact artifact:
+
+```sh
+target/appimage/Arte_Ogre-x86_64.AppImage
+```
+
+At minimum, create a document, paint, use Copy/Cut to New Layer, undo/redo,
+save/reopen `.ogre`, and export/reopen PNG. Test native Wayland and
+`ARTE_OGRE_X11=1` when both are available. Publish that tested AppImage, not a
+separately rebuilt binary.
 
 ## Attribution
 

@@ -10,8 +10,8 @@ pub fn pick_image_path() -> Option<std::path::PathBuf> {
         .add_filter(
             "Images and documents",
             &[
-                "png", "jpg", "jpeg", "webp", "tiff", "tif", "exr", "bmp", "ora", "ogre", "svg",
-                "svgz",
+                "png", "jpg", "jpeg", "webp", "tiff", "tif", "exr", "bmp", "ora", "ogre", "psd",
+                "svg", "svgz",
             ],
         )
         .pick_file()

@@ -55,8 +55,10 @@ pub use crate::compositor::{
 /// Coordinate types and helpers.
 pub use crate::coord::{tile_rect, tile_to_pixel, IVec2, Rect, TileCoord};
 
-/// Document model and color space.
-pub use crate::document::{ColorSpace, Document, SliceRect};
+/// Document model, color space, and supported canvas limit.
+pub use crate::document::{
+    is_supported_canvas_size, ColorSpace, Document, SliceRect, MAX_CANVAS_DIMENSION,
+};
 
 /// Error type and result alias.
 pub use crate::error::{OgreError, Result};

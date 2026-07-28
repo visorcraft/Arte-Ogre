@@ -11,6 +11,14 @@ use crate::error::{OgreError, Result};
 use crate::layer::{AdjustmentKind, Layer, LayerContent, LayerId};
 use crate::selection::Selection;
 
+/// Maximum supported canvas width or height in pixels.
+pub const MAX_CANVAS_DIMENSION: u32 = 8192;
+
+/// Return whether a canvas size is non-empty and within the supported limit.
+pub fn is_supported_canvas_size(width: u32, height: u32) -> bool {
+    width > 0 && height > 0 && width <= MAX_CANVAS_DIMENSION && height <= MAX_CANVAS_DIMENSION
+}
+
 /// The color space in which document pixels are interpreted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ColorSpace {

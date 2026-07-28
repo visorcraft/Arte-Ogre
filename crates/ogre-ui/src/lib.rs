@@ -41,6 +41,8 @@ pub mod tools;
 pub mod views;
 pub mod welcome;
 
+/// Maximum supported canvas width or height in pixels.
+pub use ogre_core::MAX_CANVAS_DIMENSION;
 pub use shell::{default_dock_state, Panel, Shortcut};
 
 use std::sync::Arc;

@@ -92,11 +92,8 @@ pub fn import_svg(source: &[u8], opts: SvgImportOptions) -> Result<Document, IoE
     let size = tree.size();
     let width = size.width().round() as u32;
     let height = size.height().round() as u32;
-    if width > i32::MAX as u32 || height > i32::MAX as u32 {
+    if !ogre_core::is_supported_canvas_size(width, height) {
         return Err(IoError::Unsupported("SVG dimensions exceed the maximum"));
-    }
-    if width == 0 || height == 0 {
-        return Err(IoError::SvgParse("SVG has zero size".to_string()));
     }
 
     let mut doc = Document::new(width, height);

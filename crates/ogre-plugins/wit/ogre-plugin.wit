@@ -3,11 +3,12 @@
 
 package arte:ogre-plugin;
 
-/// Stable plugin interface for Arte Ogre tile filters.
+/// Intended semantic interface for Arte Ogre tile filters.
 ///
-/// Version 1.0.0 — the host expects exactly this interface when loading a
-/// `tile-filter` plugin. The contract is intentionally minimal: a single
-/// pure function that transforms one tile of floating-point RGBA pixels.
+/// The current desktop host loads a raw core WebAssembly module rather than a
+/// component generated from this WIT. See `docs/PLUGINS.md` for the executable
+/// ABI. The semantic contract remains intentionally minimal: one pure function
+/// that transforms a tile of floating-point RGBA pixels.
 interface tile-filter {
     /// Process one tile of pixels.
     ///

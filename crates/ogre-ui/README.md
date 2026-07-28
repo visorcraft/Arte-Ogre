@@ -46,3 +46,11 @@ cargo clippy -p ogre-ui --all-targets -- -D warnings
 cargo fmt --check
 cargo doc -p ogre-ui
 ```
+
+Public behavior and contributor context:
+
+- [User guide](../../docs/USER_GUIDE.md)
+- [Architecture](../../docs/ARCHITECTURE.md)
+- [File formats](../../docs/FILE_FORMATS.md)
+- [Plugin author guide](../../docs/PLUGINS.md)
+- [Contributing](../../CONTRIBUTING.md)

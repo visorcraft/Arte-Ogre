@@ -1534,7 +1534,7 @@ fn start_file_picker(state: &mut AppState, kind: FilePickerKind) {
                     "Images and documents",
                     &[
                         "png", "jpg", "jpeg", "webp", "tiff", "tif", "exr", "bmp", "ora", "ogre",
-                        "svg", "svgz",
+                        "psd", "svg", "svgz",
                     ],
                 )
                 .pick_file(),
@@ -1868,11 +1868,14 @@ fn render_file_dialogs(ui: &mut egui::Ui, state: &mut AppState) {
                                 } else if let (Ok(w), Ok(h)) =
                                     (width.parse::<u32>(), height.parse::<u32>())
                                 {
-                                    if w > 0 && h > 0 {
+                                    if ogre_core::is_supported_canvas_size(w, h) {
                                         state.new_blank_document((w, h));
                                         close = true;
                                     } else {
-                                        state.file_dialog_feedback = "Invalid size".to_string();
+                                        state.file_dialog_feedback = format!(
+                                            "Size must be 1 to {} pixels.",
+                                            ogre_core::MAX_CANVAS_DIMENSION
+                                        );
                                     }
                                 } else {
                                     state.file_dialog_feedback = "Invalid size".to_string();
@@ -3111,13 +3114,17 @@ fn render_canvas_size_dialog(ui: &mut egui::Ui, state: &mut AppState) {
                         ui.label("Width:");
                         ui.add_sized(
                             [FIELD_W, field_h],
-                            egui::DragValue::new(width).speed(1.0).range(1..=8192),
+                            egui::DragValue::new(width)
+                                .speed(1.0)
+                                .range(1..=ogre_core::MAX_CANVAS_DIMENSION),
                         );
                         ui.end_row();
                         ui.label("Height:");
                         ui.add_sized(
                             [FIELD_W, field_h],
-                            egui::DragValue::new(height).speed(1.0).range(1..=8192),
+                            egui::DragValue::new(height)
+                                .speed(1.0)
+                                .range(1..=ogre_core::MAX_CANVAS_DIMENSION),
                         );
                         ui.end_row();
                         ui.label("Anchor:");

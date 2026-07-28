@@ -281,6 +281,13 @@ struct PendingContribution {
     param: LayerParam,
 }
 
+/// Signature plus the source tiles needed to render one output tile.
+struct TileInputs {
+    signature: Vec<Contribution>,
+    colors: Vec<(LayerId, TileCoord, Arc<Tile>)>,
+    masks: Vec<(LayerId, TileCoord, Arc<Tile>)>,
+}
+
 /// Default GPU-resident tile budget for the source and mask caches.
 ///
 /// Each tile is a 256×256 `Rgba32Float` texture (~1 MiB). A finite default
@@ -463,11 +470,7 @@ impl Compositor {
         region: Rect,
     ) -> Result<&AHashMap<TileCoord, wgpu::TextureView>, OgreError> {
         let order = doc.render_order()?;
-        // Per-layer buffer sync runs every composite: it cheaply uploads tiles
-        // whose backing Arc has changed and evicts leftover entries when a
-        // layer's content type changes. Skipping it would mean a tile mutated
-        // mid-session never reaches the GPU.
-        self.sync_doc_state(ctx, doc, &order);
+        self.sync_doc_state(doc, &order);
         // Pure viewport pans/zooms keep the document structurally identical,
         // so the previous frame's plan is still correct. Rebuild only on a
         // structural fingerprint change. Detach into a local Vec so the
@@ -510,23 +513,15 @@ impl Compositor {
 
         for coord in &output_coords {
             self.sync_tile_inputs(ctx, doc, coord, &plan);
+            self.tiles.enforce_budget();
+            self.masks.enforce_budget();
         }
-
-        // Enforce GPU tile budgets only after all tiles needed for this
-        // composite have been read. Evicting earlier could drop a tile between
-        // upload and the batched blend dispatch that needs it.
-        self.tiles.enforce_budget();
-        self.masks.enforce_budget();
 
         Ok(self.result.views())
     }
 
-    /// Push every per-layer GPU state update that doesn't depend on the plan:
-    /// upload raster/vector tiles whose backing `Arc` changed since last
-    /// composite, clear leftover group entries when a layer's content type
-    /// switches, and reconcile mask caches. Idempotent: re-running on an
-    /// unchanged doc is a `ptr_eq` check per layer.
-    fn sync_doc_state(&mut self, ctx: &GpuContext, doc: &Document, order: &[(LayerId, u8)]) {
+    /// Refresh CPU vector buffers and clear caches for non-pixel layers.
+    fn sync_doc_state(&mut self, doc: &Document, order: &[(LayerId, u8)]) {
         for &(id, _) in order {
             let Ok(layer) = doc.layer(id) else {
                 continue;
@@ -537,23 +532,23 @@ impl Compositor {
                     self.masks.clear_layer(id);
                 }
                 LayerContent::Raster { .. } => {
-                    self.tiles.sync_layer(ctx, layer);
-                    if layer.mask().is_some() {
-                        self.masks.sync_layer_mask(ctx, layer);
-                    } else {
+                    if layer.mask().is_none() {
                         self.masks.clear_layer(id);
                     }
                 }
                 LayerContent::Vector(_) => {
-                    self.sync_vector_layer(ctx, layer);
+                    self.sync_vector_buffer(layer);
                     self.masks.clear_layer(id);
                 }
-                LayerContent::Adjustment(_) => {}
+                LayerContent::Adjustment(_) => {
+                    self.tiles.clear_layer(id);
+                    self.masks.clear_layer(id);
+                }
             }
         }
     }
 
-    /// Build the render plan and sync tile caches for all layers.
+    /// Build the render plan for all visible layers.
     fn build_plan(
         &mut self,
         doc: &Document,
@@ -688,9 +683,8 @@ impl Compositor {
         Ok(plan)
     }
 
-    /// Ensure the CPU-rasterized cache for a vector layer is up to date, then
-    /// upload its tiles to the GPU colour cache.
-    fn sync_vector_layer(&mut self, ctx: &GpuContext, layer: &Layer) {
+    /// Ensure the CPU-rasterized cache for a vector layer is up to date.
+    fn sync_vector_buffer(&mut self, layer: &Layer) {
         let LayerContent::Vector(data) = &layer.content else {
             return;
         };
@@ -704,8 +698,6 @@ impl Compositor {
             let buffer = rasterize_vector_data(data);
             self.vector_buffers.insert(layer.id, (version, buffer));
         }
-        let (_, buffer) = self.vector_buffers.get(&layer.id).expect("just inserted");
-        self.tiles.sync_buffer(ctx, layer.id, buffer);
     }
 
     /// Compute the signature for one output tile and, if it is dirty, composite
@@ -717,14 +709,17 @@ impl Compositor {
         coord: &TileCoord,
         plan: &[LayerOp],
     ) {
-        let new_signature = self.signature_for_tile(doc, coord, plan);
+        let inputs = self.collect_tile_inputs(doc, coord, plan);
         let cached = self.result.signature(*coord);
         if cached
-            .map(|s| s == new_signature.as_slice())
+            .map(|s| s == inputs.signature.as_slice())
             .unwrap_or(false)
         {
             return;
         }
+
+        self.tiles.sync_tiles(ctx, &inputs.colors);
+        self.masks.sync_tiles(ctx, &inputs.masks);
 
         self.dirty_keys.insert(*coord);
         let texture = self.result.get_or_create(ctx, *coord);
@@ -871,8 +866,11 @@ impl Compositor {
                         // contribution is a no-op and is dropped entirely. This
                         // matches the single-layer path, which composites with a
                         // transparent fallback mask (also a no-op).
-                        let mask_present =
-                            *has_mask && self.masks.texture((*layer_id, src_tile)).is_some();
+                        let mask_present = *has_mask
+                            && layer
+                                .mask()
+                                .and_then(|mask| mask.get_tile(src_tile))
+                                .is_some();
                         if *has_mask && !mask_present {
                             continue;
                         }
@@ -913,7 +911,7 @@ impl Compositor {
         let top = group_stack.last().map(|&(d, _, _)| d);
         self.flush_run(ctx, coord, top, &mut run);
 
-        self.result.set_signature(*coord, new_signature);
+        self.result.set_signature(*coord, inputs.signature);
     }
 
     /// Composite the pending raster `run` over a single accumulator and clear
@@ -969,14 +967,16 @@ impl Compositor {
         run.clear();
     }
 
-    /// Compute the ordered signature of contributions for one output tile.
-    fn signature_for_tile(
+    /// Collect the signature and GPU source tiles for one output tile.
+    fn collect_tile_inputs(
         &self,
         doc: &Document,
         coord: &TileCoord,
         plan: &[LayerOp],
-    ) -> Vec<Contribution> {
+    ) -> TileInputs {
         let mut signature = Vec::new();
+        let mut colors = Vec::new();
+        let mut masks = Vec::new();
         for op in plan {
             match op {
                 LayerOp::PushGroup {
@@ -1085,11 +1085,21 @@ impl Compositor {
                             layer.visible,
                             *has_mask,
                         ));
+                        if !*has_mask || mask_arc.is_some() {
+                            colors.push((*layer_id, src_tile, Arc::clone(&color_arc)));
+                        }
+                        if let Some(mask_arc) = mask_arc {
+                            masks.push((*layer_id, src_tile, mask_arc));
+                        }
                     }
                 }
             }
         }
-        signature
+        TileInputs {
+            signature,
+            colors,
+            masks,
+        }
     }
 }
 
@@ -1332,6 +1342,24 @@ mod tests {
             .composite(&ctx, &doc, Rect::new(0, 0, 512, 64))
             .unwrap();
         assert!(compositor.tiles.len() <= 4);
+    }
+
+    #[test]
+    fn composite_uploads_only_tiles_near_visible_region() {
+        let ctx = GpuContext::headless();
+        let mut doc = Document::new(4096, 256);
+        let id = doc.add_raster_layer("wide");
+        let buffer = doc.layer_mut(id).unwrap().buffer_mut().unwrap();
+        for x in (0..4096).step_by(TILE_SIZE) {
+            buffer.set_pixel(IVec2::new(x, 0), Rgba32F::new(1.0, 0.0, 0.0, 1.0));
+        }
+
+        let mut compositor = Compositor::new(&ctx);
+        compositor
+            .composite(&ctx, &doc, Rect::new(0, 0, 1, 1))
+            .unwrap();
+
+        assert_eq!(compositor.tiles.upload_count(), 3);
     }
 
     #[test]

@@ -718,8 +718,10 @@ impl Command for CropCmd {
     }
 
     fn apply(&mut self, doc: &mut Document) -> Result<()> {
-        if self.canvas.is_empty() {
-            return Err(OgreError::InvalidOperation("crop rectangle is empty"));
+        if !crate::is_supported_canvas_size(self.canvas.w, self.canvas.h) {
+            return Err(OgreError::InvalidOperation(
+                "crop size exceeds supported canvas dimensions",
+            ));
         }
         self.old_canvas = Some(doc.canvas);
         doc.canvas = self.canvas;
@@ -766,8 +768,10 @@ impl Command for ResizeCanvasCmd {
     }
 
     fn apply(&mut self, doc: &mut Document) -> Result<()> {
-        if self.new_width == 0 || self.new_height == 0 {
-            return Err(OgreError::InvalidOperation("canvas size must be non-zero"));
+        if !crate::is_supported_canvas_size(self.new_width, self.new_height) {
+            return Err(OgreError::InvalidOperation(
+                "canvas size exceeds supported dimensions",
+            ));
         }
 
         let old = doc.canvas;
@@ -948,9 +952,12 @@ mod tests {
     }
 
     #[test]
-    fn crop_cmd_rejects_empty_rectangle() {
+    fn crop_cmd_rejects_unsupported_rectangle() {
         let mut doc = Document::new(100, 100);
         let mut cmd = CropCmd::new(Rect::new(10, 10, 0, 50));
+        assert!(cmd.apply(&mut doc).is_err());
+
+        let mut cmd = CropCmd::new(Rect::new(0, 0, crate::MAX_CANVAS_DIMENSION + 1, 50));
         assert!(cmd.apply(&mut doc).is_err());
     }
 
@@ -980,6 +987,15 @@ mod tests {
         let mut doc = Document::new(100, 100);
         let mut cmd = ResizeCanvasCmd::new(0, 150, CanvasAnchor::TopLeft);
         assert!(cmd.apply(&mut doc).is_err());
+    }
+
+    #[test]
+    fn resize_canvas_cmd_rejects_unsupported_dimension() {
+        let mut doc = Document::new(100, 100);
+        let mut cmd =
+            ResizeCanvasCmd::new(crate::MAX_CANVAS_DIMENSION + 1, 150, CanvasAnchor::TopLeft);
+        assert!(cmd.apply(&mut doc).is_err());
+        assert_eq!(doc.canvas, Rect::new(0, 0, 100, 100));
     }
 
     #[test]

@@ -25,8 +25,8 @@ use std::sync::Arc;
 use ahash::{AHashMap, AHashSet};
 use ogre_core::{
     AdjustmentKind, BlendMode, ColorSpace, Document, IVec2, Layer, LayerContent, LayerId, Rect,
-    Rgba32F, Selection, SelectionKind, Tile, TileCoord, TiledBuffer, VectorData, VectorPath,
-    TILE_SIZE,
+    Rgba32F, Selection, SelectionKind, SliceRect, Tile, TileCoord, TiledBuffer, VectorData,
+    VectorPath, MAX_CANVAS_DIMENSION, TILE_SIZE,
 };
 use serde::{Deserialize, Serialize};
 use slotmap::Key;
@@ -34,9 +34,7 @@ use slotmap::Key;
 const MAGIC: &[u8; 4] = b"OGRE";
 const VERSION: u32 = 2;
 const COMPRESSION_LEVEL: i32 = 3;
-const MAX_NATIVE_CANVAS_DIMENSION: u32 = 8192;
-const MAX_NATIVE_CANVAS_PIXELS: u64 =
-    MAX_NATIVE_CANVAS_DIMENSION as u64 * MAX_NATIVE_CANVAS_DIMENSION as u64;
+const MAX_NATIVE_CANVAS_PIXELS: u64 = MAX_CANVAS_DIMENSION as u64 * MAX_CANVAS_DIMENSION as u64;
 const MAX_NATIVE_VECTOR_VERTICES: usize = 100_000;
 
 use crate::error::IoError;
@@ -48,6 +46,8 @@ struct Manifest {
     color_space: ColorSpace,
     #[serde(default)]
     icc_profile: Option<Vec<u8>>,
+    #[serde(default)]
+    slices: Vec<SliceRect>,
     active: Option<u64>,
     root_order: Vec<u64>,
     selection: SelectionManifest,
@@ -102,6 +102,7 @@ struct TileManifest {
 
 /// Save `doc` to `path` in the native `.ogre` format.
 pub fn save(doc: &Document, path: impl AsRef<Path>) -> Result<(), IoError> {
+    validate_canvas(doc.canvas)?;
     let manifest = build_manifest(doc)?;
     let manifest_bytes = rmp_serde::to_vec_named(&manifest)?;
 
@@ -199,6 +200,7 @@ fn build_manifest(doc: &Document) -> Result<Manifest, IoError> {
         canvas: doc.canvas,
         color_space: doc.color_space,
         icc_profile: doc.icc_profile.clone(),
+        slices: doc.slices.clone(),
         active: doc.active.map(|id| id.data().as_ffi()),
         root_order: doc.order.iter().map(|id| id.data().as_ffi()).collect(),
         selection: selection_to_manifest(&doc.selection)?,
@@ -247,6 +249,7 @@ fn rebuild_document(manifest: Manifest) -> Result<Document, IoError> {
     let mut doc = Document::with_canvas(canvas);
     doc.color_space = manifest.color_space;
     doc.icc_profile = manifest.icc_profile;
+    doc.slices = manifest.slices;
     doc.selection = manifest_to_selection(&manifest.selection, doc.canvas)?;
 
     let mut stable_to_id: AHashMap<u64, LayerId> = AHashMap::new();
@@ -367,8 +370,8 @@ fn validate_canvas(canvas: Rect) -> Result<Rect, IoError> {
 }
 
 fn validate_rect_budget(rect: Rect, error: &'static str) -> Result<(), IoError> {
-    if rect.w > MAX_NATIVE_CANVAS_DIMENSION
-        || rect.h > MAX_NATIVE_CANVAS_DIMENSION
+    if rect.w > MAX_CANVAS_DIMENSION
+        || rect.h > MAX_CANVAS_DIMENSION
         || rect.area() > MAX_NATIVE_CANVAS_PIXELS
     {
         return Err(IoError::CorruptManifest(error));
@@ -438,7 +441,7 @@ fn validate_vector_path(path: &VectorPath) -> Result<(), IoError> {
     if path.vertices.is_empty() {
         return Ok(());
     }
-    if path.stroke.width > MAX_NATIVE_CANVAS_DIMENSION as f32 {
+    if path.stroke.width > MAX_CANVAS_DIMENSION as f32 {
         return Err(IoError::CorruptManifest(
             "vector stroke width exceeds the maximum supported dimensions",
         ));
@@ -466,8 +469,8 @@ fn validate_vector_path(path: &VectorPath) -> Result<(), IoError> {
 
     if w <= 0
         || h <= 0
-        || w as u64 > MAX_NATIVE_CANVAS_DIMENSION as u64
-        || h as u64 > MAX_NATIVE_CANVAS_DIMENSION as u64
+        || w as u64 > MAX_CANVAS_DIMENSION as u64
+        || h as u64 > MAX_CANVAS_DIMENSION as u64
         || (w as u64).saturating_mul(h as u64) > MAX_NATIVE_CANVAS_PIXELS
     {
         return Err(IoError::CorruptManifest(
@@ -593,6 +596,22 @@ mod tests {
         assert_eq!(layer.blend, BlendMode::Multiply);
         assert!(!layer.visible);
         assert!(layer.locked);
+    }
+
+    #[test]
+    fn round_trip_preserves_slices() {
+        let mut doc = Document::new(128, 96);
+        doc.slices.push(ogre_core::SliceRect {
+            name: "hero".into(),
+            rect: Rect::new(4, 5, 32, 24),
+        });
+
+        let path = std::env::temp_dir().join("ogre_slices_test.ogre");
+        save(&doc, &path).unwrap();
+        let loaded = load(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(loaded.slices, doc.slices);
     }
 
     #[test]
@@ -805,6 +824,7 @@ mod tests {
             canvas,
             color_space: ColorSpace::LinearSrgb,
             icc_profile: None,
+            slices: Vec::new(),
             active: None,
             root_order: Vec::new(),
             selection: SelectionManifest::None,
@@ -815,7 +835,7 @@ mod tests {
 
     #[test]
     fn load_rejects_oversized_native_canvas() {
-        let manifest = empty_manifest(Rect::new(0, 0, 8193, 16));
+        let manifest = empty_manifest(Rect::new(0, 0, MAX_CANVAS_DIMENSION + 1, 16));
         let path = write_manifest_fixture("ogre_oversized_canvas.ogre", &manifest);
         let res = load(&path);
         let _ = std::fs::remove_file(&path);
@@ -823,6 +843,23 @@ mod tests {
             matches!(res, Err(IoError::CorruptManifest(_))),
             "got {res:?}"
         );
+    }
+
+    #[test]
+    fn save_rejects_oversized_native_canvas_without_creating_file() {
+        let doc = Document::new(MAX_CANVAS_DIMENSION + 1, 16);
+        let path = std::env::temp_dir().join("ogre_save_oversized_canvas.ogre");
+        let _ = std::fs::remove_file(&path);
+
+        let res = save(&doc, &path);
+        let created = path.exists();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(
+            matches!(res, Err(IoError::CorruptManifest(_))),
+            "got {res:?}"
+        );
+        assert!(!created, "invalid save created a file");
     }
 
     #[test]

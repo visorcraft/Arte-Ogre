@@ -9,7 +9,7 @@
 //! newest recovery file can be reloaded so unsaved work is not lost after a
 //! crash.
 
-use ogre_core::Document;
+use ogre_core::{Document, MAX_CANVAS_DIMENSION};
 
 pub use crate::tools::SidebarSection;
 use serde::{Deserialize, Serialize};
@@ -144,6 +144,8 @@ impl Preferences {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         let mut prefs: Self = toml::from_str(&text).map_err(|e| e.to_string())?;
+        prefs.default_canvas.0 = prefs.default_canvas.0.clamp(1, MAX_CANVAS_DIMENSION);
+        prefs.default_canvas.1 = prefs.default_canvas.1.clamp(1, MAX_CANVAS_DIMENSION);
         crate::tools::normalize_sidebar_order(&mut prefs.sidebar_order);
         Ok(prefs)
     }
@@ -600,6 +602,23 @@ mod tests {
         let path = temp_dir("ogre_prefs_missing").join("prefs.toml");
         let prefs = Preferences::load_or_default(&path);
         assert_eq!(prefs, Preferences::default());
+    }
+
+    #[test]
+    fn loaded_default_canvas_is_clamped_to_supported_size() {
+        let dir = temp_dir("ogre_prefs_canvas_limit");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("prefs.toml");
+        let prefs = Preferences {
+            default_canvas: (16_384, 0),
+            ..Preferences::default()
+        };
+        prefs.save(&path).unwrap();
+
+        let loaded = Preferences::load(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(loaded.default_canvas, (MAX_CANVAS_DIMENSION, 1));
     }
 
     #[test]

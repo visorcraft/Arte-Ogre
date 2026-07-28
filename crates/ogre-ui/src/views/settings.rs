@@ -81,9 +81,13 @@ pub fn render(ui: &mut egui::Ui, state: &mut AppState) {
                 let (mut w, mut h) = state.preferences.default_canvas;
                 ui.horizontal(|ui| {
                     ui.label("Default canvas");
-                    ui.add(egui::DragValue::new(&mut w).range(1..=16384));
+                    ui.add(
+                        egui::DragValue::new(&mut w).range(1..=ogre_core::MAX_CANVAS_DIMENSION),
+                    );
                     ui.label("×");
-                    ui.add(egui::DragValue::new(&mut h).range(1..=16384));
+                    ui.add(
+                        egui::DragValue::new(&mut h).range(1..=ogre_core::MAX_CANVAS_DIMENSION),
+                    );
                 });
                 let mut autosave = state.preferences.autosave_interval_seconds;
                 ui.horizontal(|ui| {

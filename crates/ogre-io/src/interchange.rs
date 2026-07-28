@@ -64,6 +64,11 @@ pub fn import_ora(path: impl AsRef<Path>) -> Result<Document, IoError> {
                         .get("h")
                         .and_then(|s| s.parse::<u32>().ok())
                         .unwrap_or(64);
+                    if !ogre_core::is_supported_canvas_size(w, h) {
+                        return Err(IoError::Unsupported(
+                            "OpenRaster dimensions exceed the maximum",
+                        ));
+                    }
                     doc = Some(Document::new(w, h));
                 } else if name == b"stack" {
                     if let Some(ref mut doc) = doc {
@@ -362,6 +367,9 @@ fn write_layer_or_stack(
 pub fn import_psd(path: impl AsRef<Path>) -> Result<Document, IoError> {
     let bytes = std::fs::read(path)?;
     let psd = Psd::from_bytes(&bytes)?;
+    if !ogre_core::is_supported_canvas_size(psd.width(), psd.height()) {
+        return Err(IoError::Unsupported("PSD dimensions exceed the maximum"));
+    }
 
     let mut doc = Document::new(psd.width(), psd.height());
 

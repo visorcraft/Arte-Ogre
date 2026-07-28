@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 
 use image::codecs::{jpeg::JpegEncoder, png::PngEncoder, tiff::TiffEncoder, webp::WebPEncoder};
 use image::{ColorType, ExtendedColorType, ImageEncoder, ImageFormat};
-use ogre_core::{compositor::composite_document, Document, IVec2, Rect, Rgba32F};
+use ogre_core::{
+    compositor::composite_document, is_supported_canvas_size, Document, IVec2, Rect, Rgba32F,
+};
 
 use crate::color::{
     convert_to_profile, detect_embedded_profile, raw_rgb_u16_to_rgba32, raw_rgb_u8_to_rgba32,
@@ -63,9 +65,7 @@ pub fn import_image(path: impl AsRef<Path>) -> Result<Document, IoError> {
     let path = path.as_ref();
     let image = image::open(path)?;
     let (width, height) = (image.width(), image.height());
-    // Document coordinates are `i32`; reject images whose dimensions would wrap
-    // when cast, before allocating buffers sized from them.
-    if width > i32::MAX as u32 || height > i32::MAX as u32 {
+    if !is_supported_canvas_size(width, height) {
         return Err(IoError::Unsupported("image dimensions exceed the maximum"));
     }
     let embedded = detect_embedded_profile(path)?;

@@ -24,7 +24,7 @@ fn main() -> eframe::Result<()> {
             label: Some("egui wgpu device"),
             required_features: wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
             required_limits: wgpu::Limits {
-                max_texture_dimension_2d: 8192,
+                max_texture_dimension_2d: ogre_ui::MAX_CANVAS_DIMENSION,
                 ..base_limits
             },
             ..Default::default()

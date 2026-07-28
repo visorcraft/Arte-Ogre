@@ -225,8 +225,8 @@ struct CachedTile {
 
 /// A memory budget limiting the number of GPU-resident tiles.
 ///
-/// A `max_gpu_tiles` of `0` means unlimited. The budget is enforced after each
-/// `sync_*` call by evicting the least-recently-used tiles.
+/// A `max_gpu_tiles` of `0` means unlimited. Call [`TileTextureCache::enforce_budget`]
+/// after using requested tiles to evict the least-recently-used entries.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CacheBudget {
     /// Maximum number of tiles that may stay in GPU memory at once.
@@ -380,8 +380,7 @@ impl TileTextureCache {
     /// Synchronize the cache with the occupied tiles of a generic buffer.
     ///
     /// This is the internal primitive used by [`sync_layer`](Self::sync_layer)
-    /// and [`sync_layer_mask`](Self::sync_layer_mask), and by the GPU
-    /// compositor's vector-layer rasterization cache.
+    /// and [`sync_layer_mask`](Self::sync_layer_mask).
     ///
     /// Budget enforcement is deliberately deferred: call
     /// [`enforce_budget`](Self::enforce_budget) after all tiles needed for the
@@ -394,22 +393,34 @@ impl TileTextureCache {
         buffer: &TiledBuffer,
     ) {
         let mut current_coords = AHashSet::new();
-
-        // First pass: record which occupied tiles are present and which need a
-        // (re-)upload, without touching the GPU. This lets the uploads be
-        // batched into a few staging copies instead of one write per tile.
-        let mut upload_coords: Vec<TileCoord> = Vec::new();
-        let mut upload_tiles: Vec<Arc<Tile>> = Vec::new();
+        let mut current_tiles = Vec::new();
         for (coord, tile) in buffer.occupied_tiles() {
             current_coords.insert(coord);
+            current_tiles.push((layer_id, coord, tile));
+        }
+        self.sync_tiles(ctx, &current_tiles);
 
-            let needs_upload = match self.entries.get(&(layer_id, coord)) {
-                Some(entry) => !Arc::ptr_eq(&entry.src, &tile),
+        self.entries
+            .retain(|(id, coord), _| *id != layer_id || current_coords.contains(coord));
+    }
+
+    /// Upload the requested source tiles whose backing allocations changed.
+    pub(crate) fn sync_tiles(
+        &mut self,
+        ctx: &GpuContext,
+        tiles: &[(LayerId, TileCoord, Arc<Tile>)],
+    ) {
+        let mut upload_keys = Vec::new();
+        let mut upload_tiles: Vec<Arc<Tile>> = Vec::new();
+        for (layer_id, coord, tile) in tiles {
+            let key = (*layer_id, *coord);
+            let needs_upload = match self.entries.get(&key) {
+                Some(entry) => !Arc::ptr_eq(&entry.src, tile),
                 None => true,
             };
             if needs_upload {
-                upload_coords.push(coord);
-                upload_tiles.push(tile);
+                upload_keys.push(key);
+                upload_tiles.push(Arc::clone(tile));
             }
         }
 
@@ -418,7 +429,7 @@ impl TileTextureCache {
             for (i, texture) in textures.into_iter().enumerate() {
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 self.entries.insert(
-                    (layer_id, upload_coords[i]),
+                    upload_keys[i],
                     CachedTile {
                         texture,
                         view,
@@ -429,9 +440,6 @@ impl TileTextureCache {
                 self.upload_count += 1;
             }
         }
-
-        self.entries
-            .retain(|(id, coord), _| *id != layer_id || current_coords.contains(coord));
     }
 
     /// Drop every cached texture belonging to `layer_id`.
