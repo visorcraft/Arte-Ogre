@@ -7,6 +7,8 @@
 //! cancels (no command). The committed pixels are in document space, scaled by
 //! the chosen font size — screen zoom does not affect them.
 
+use std::cell::Cell;
+
 use glam::Vec2;
 use ogre_core::{AddVectorLayerCmd, BrushStrokeCmd, Rgba32F, VectorData};
 use ogre_vector::{
@@ -77,6 +79,12 @@ pub struct TypeTool {
     settings: TypeSettings,
     /// The document-space anchor (top-left of the text block).
     anchor: Option<glam::IVec2>,
+    /// Pointer origin while dragging out a new text-box width.
+    placing_from: Option<glam::IVec2>,
+    /// Whether the right-edge text-box handle is being dragged.
+    resizing: bool,
+    /// Last on-canvas text area in document coordinates, for handle hit-testing.
+    text_area: Cell<Option<(Vec2, Vec2)>>,
     /// The active raster layer for destructive Pixels-mode commit.
     active_layer: Option<ogre_core::LayerId>,
     /// Cached `cosmic-text` font system (loaded lazily).
@@ -110,6 +118,9 @@ impl TypeTool {
         Self {
             settings: TypeSettings::default(),
             anchor: None,
+            placing_from: None,
+            resizing: false,
+            text_area: Cell::new(None),
             active_layer: None,
             font_system: None,
             swash_cache: SwashCache::new(),
@@ -203,6 +214,9 @@ impl TypeTool {
 
     fn clear(&mut self) {
         self.anchor = None;
+        self.placing_from = None;
+        self.resizing = false;
+        self.text_area.set(None);
         self.active_layer = None;
         self.committed_mode = None;
         self.editing_layer = None;
@@ -234,6 +248,9 @@ impl TypeTool {
         // Either idle, or switching away from a re-edit: reset before loading.
         self.editing_layer = None;
         self.anchor = None;
+        self.placing_from = None;
+        self.resizing = false;
+        self.text_area.set(None);
         self.committed_mode = None;
         self.settings.text.clear();
         let Some(id) = doc.active else {
@@ -366,6 +383,14 @@ impl TypeTool {
         }
         Some(Box::new(BrushStrokeCmd::new(layer, edits)) as Box<dyn ogre_core::Command>)
     }
+
+    fn over_resize_handle(&self, pos: glam::IVec2, radius: f32) -> bool {
+        let Some((min, max)) = self.text_area.get() else {
+            return false;
+        };
+        let handle = Vec2::new(max.x, (min.y + max.y) * 0.5);
+        (pos.as_vec2() - handle).length_squared() <= radius * radius
+    }
 }
 
 impl Tool for TypeTool {
@@ -374,32 +399,63 @@ impl Tool for TypeTool {
         doc: &ogre_core::Document,
         ev: PointerEvent,
     ) -> Option<Box<dyn ogre_core::Command>> {
-        if ev.phase == Phase::Down {
-            // A canvas click starts a fresh text. If a layer was loaded for
-            // re-edit (e.g. on tool activation), drop it: `EditVectorCmd`
-            // keeps the layer's offset fixed, so a click-reposition would
-            // otherwise desync the anchor from the rendered position.
-            self.editing_layer = None;
-            // Snapshot the mode at gesture start so a mid-gesture sidebar
-            // change cannot desync the commit target from the resolved layer.
-            self.committed_mode = Some(self.mode);
-            // In Vector mode we create a new vector layer, so we only need the
-            // anchor point. In Pixels mode we need an unlocked raster layer to
-            // paint into.
-            if self.commit_mode() == VectorCommitMode::Vector {
-                self.anchor = Some(ev.doc_pos);
-                self.request_text_focus = true;
-                return None;
-            }
-            if let Some(&layer) = doc.active.as_ref() {
-                if let Ok(l) = doc.layer(layer) {
-                    if !l.locked && l.is_raster() {
-                        self.active_layer = Some(layer);
-                        self.anchor = Some(ev.doc_pos);
-                        self.request_text_focus = true;
-                        return None;
+        match ev.phase {
+            Phase::Down => {
+                if self.has_active_entry() && self.over_resize_handle(ev.doc_pos, ev.hit_radius_doc)
+                {
+                    self.resizing = true;
+                    self.placing_from = None;
+                    return None;
+                }
+
+                // A canvas click starts a fresh text. If a layer was loaded for
+                // re-edit (e.g. on tool activation), drop it: `EditVectorCmd`
+                // keeps the layer's offset fixed, so a click-reposition would
+                // otherwise desync the anchor from the rendered position.
+                self.editing_layer = None;
+                self.text_area.set(None);
+                // Snapshot the mode at gesture start so a mid-gesture sidebar
+                // change cannot desync the commit target from the resolved layer.
+                self.committed_mode = Some(self.mode);
+                // In Vector mode we create a new vector layer, so we only need the
+                // anchor point. In Pixels mode we need an unlocked raster layer to
+                // paint into.
+                if self.commit_mode() == VectorCommitMode::Vector {
+                    self.anchor = Some(ev.doc_pos);
+                    self.placing_from = Some(ev.doc_pos);
+                    self.request_text_focus = true;
+                    return None;
+                }
+                if let Some(&layer) = doc.active.as_ref() {
+                    if let Ok(l) = doc.layer(layer) {
+                        if !l.locked && l.is_raster() {
+                            self.active_layer = Some(layer);
+                            self.anchor = Some(ev.doc_pos);
+                            self.placing_from = Some(ev.doc_pos);
+                            self.request_text_focus = true;
+                            return None;
+                        }
                     }
                 }
+            }
+            Phase::Drag => {
+                let min_width = self.settings.font_size.max(24.0);
+                if self.resizing {
+                    if let Some(anchor) = self.anchor {
+                        self.settings.wrap_width =
+                            ((ev.doc_pos.x - anchor.x) as f32).max(min_width);
+                    }
+                } else if let Some(start) = self.placing_from {
+                    let width = (ev.doc_pos.x - start.x).unsigned_abs() as f32;
+                    if width >= ev.drag_threshold_doc {
+                        self.anchor = Some(glam::IVec2::new(start.x.min(ev.doc_pos.x), start.y));
+                        self.settings.wrap_width = width.max(min_width);
+                    }
+                }
+            }
+            Phase::Up => {
+                self.placing_from = None;
+                self.resizing = false;
             }
         }
         None
@@ -422,11 +478,6 @@ impl Tool for TypeTool {
                 + Vec2::new(canvas_rect.min.x, canvas_rect.min.y);
             egui::Pos2::new(v.x, v.y)
         };
-        let to_screen_f = |p: glam::Vec2| -> egui::Pos2 {
-            let v = (p - viewport.pan) * viewport.zoom / pixels_per_point
-                + Vec2::new(canvas_rect.min.x, canvas_rect.min.y);
-            egui::Pos2::new(v.x, v.y)
-        };
         let pos = to_screen(anchor);
         let screen_size =
             (self.settings.font_size * viewport.zoom / pixels_per_point).clamp(6.0, 400.0);
@@ -442,23 +493,6 @@ impl Tool for TypeTool {
             to_u8(c.a.max(0.85)),
         );
 
-        // Wrap-width guide (document pixels → screen).
-        if self.settings.wrap_width > 0.0 {
-            let w = self.settings.wrap_width;
-            // Estimate height from line count for a helpful box, not exact metrics.
-            let lines = self.settings.text.lines().count().max(1) as f32;
-            let h_doc = self.settings.font_size * self.settings.line_height * lines;
-            let tl = to_screen_f(anchor.as_vec2());
-            let br = to_screen_f(anchor.as_vec2() + glam::Vec2::new(w, h_doc));
-            let rect = egui::Rect::from_min_max(tl, br);
-            painter.rect_stroke(
-                rect,
-                0.0,
-                egui::Stroke::new(1.0, egui::Color32::from_white_alpha(90)),
-                egui::StrokeKind::Outside,
-            );
-        }
-
         // Live preview of the typed string at the anchor. Uses egui layout so
         // the user sees content/position/size/style while typing; commit still
         // shapes with cosmic-text + the chosen family/weight/style.
@@ -469,46 +503,79 @@ impl Tool for TypeTool {
             line_height: Some(line_h),
             ..Default::default()
         };
-        let layout_line = |line: &str| -> std::sync::Arc<egui::Galley> {
-            let mut job = egui::text::LayoutJob::default();
-            job.append(line, 0.0, preview_format.clone());
-            painter.layout_job(job)
-        };
-
-        let mut last_line_width = 0.0f32;
-        if !self.settings.text.is_empty() {
-            let mut y = pos.y;
-            for line in self.settings.text.split('\n') {
-                let galley = layout_line(line);
-                last_line_width = galley.size().x;
-                let x = match self.settings.align {
-                    TextAlign::Left => pos.x,
-                    TextAlign::Center => pos.x - galley.size().x * 0.5,
-                    TextAlign::Right => pos.x - galley.size().x,
-                };
-                // Fake-bold: second pass offset (egui has no weight axis).
-                if self.settings.bold {
-                    painter.galley(egui::pos2(x + 0.7, y), galley.clone(), text_color);
-                }
-                painter.galley(egui::pos2(x, y), galley, text_color);
-                y += line_h;
-            }
+        let scale = viewport.zoom / pixels_per_point;
+        let mut job = egui::text::LayoutJob::default();
+        job.append(&self.settings.text, 0.0, preview_format);
+        if self.settings.wrap_width > 0.0 {
+            job.wrap.max_width = (self.settings.wrap_width * scale).max(1.0);
+            job.halign = match self.settings.align {
+                TextAlign::Left => egui::Align::Min,
+                TextAlign::Center => egui::Align::Center,
+                TextAlign::Right => egui::Align::Max,
+            };
         }
+        let galley = painter.layout_job(job);
+        let box_width_screen = if self.settings.wrap_width > 0.0 {
+            self.settings.wrap_width * scale
+        } else {
+            galley.size().x.max(screen_size * 4.0)
+        };
+        // ponytail: text boxes auto-height; store height only when clipping exists.
+        let box_height_screen = galley.size().y.max(line_h);
+        let box_size_doc = Vec2::new(box_width_screen / scale, box_height_screen / scale);
+        self.text_area
+            .set(Some((anchor.as_vec2(), anchor.as_vec2() + box_size_doc)));
+
+        let border = egui::Color32::from_rgb(80, 170, 255);
+        let rect = egui::Rect::from_min_size(pos, egui::vec2(box_width_screen, box_height_screen));
+        painter.rect_stroke(
+            rect,
+            0.0,
+            egui::Stroke::new(1.0, border),
+            egui::StrokeKind::Outside,
+        );
+
+        // Fake-bold: second pass offset (egui has no weight axis).
+        if self.settings.bold {
+            painter.galley(pos + egui::vec2(0.7, 0.0), galley.clone(), text_color);
+        }
+        painter.galley(pos, galley.clone(), text_color);
+
+        let handle = rect.right_center();
+        let handle_rect = egui::Rect::from_center_size(handle, egui::vec2(7.0, 14.0));
+        painter.rect_filled(handle_rect, 1.0, border);
+        if painter
+            .ctx()
+            .input(|i| i.pointer.hover_pos())
+            .is_some_and(|hover| handle_rect.expand(4.0).contains(hover))
+        {
+            painter
+                .ctx()
+                .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        painter.text(
+            rect.left_bottom() + egui::vec2(0.0, 4.0),
+            egui::Align2::LEFT_TOP,
+            format!("{:.0} × {:.0} px", box_size_doc.x, box_size_doc.y),
+            egui::FontId::monospace(10.0),
+            border,
+        );
 
         // Blinking caret at the end of the last line.
         let blink_on = (time * 2.0).fract() < 0.55;
         if blink_on {
-            let caret_x = match self.settings.align {
-                TextAlign::Left => pos.x + last_line_width,
-                TextAlign::Center => pos.x + last_line_width * 0.5,
-                TextAlign::Right => pos.x,
+            let caret = galley.pos_from_cursor(galley.end());
+            let caret_x = pos.x + caret.min.x;
+            let caret_top = pos.y + caret.min.y;
+            let caret_bottom = if caret.height() > 0.0 {
+                pos.y + caret.max.y
+            } else {
+                caret_top + screen_size
             };
-            let lines = self.settings.text.lines().count().max(1);
-            let caret_y = pos.y + line_h * (lines.saturating_sub(1) as f32);
             painter.line_segment(
                 [
-                    egui::Pos2::new(caret_x, caret_y),
-                    egui::Pos2::new(caret_x, caret_y + screen_size),
+                    egui::Pos2::new(caret_x, caret_top),
+                    egui::Pos2::new(caret_x, caret_bottom),
                 ],
                 egui::Stroke::new(1.5, egui::Color32::WHITE),
             );
@@ -567,6 +634,57 @@ mod tests {
         assert_eq!(tool.active_layer, doc.active);
         assert!(tool.has_active_entry());
         assert!(tool.take_request_text_focus());
+    }
+
+    #[test]
+    fn type_tool_drag_sets_text_box_width() {
+        let doc = doc_with_raster();
+        let mut tool = TypeTool::new();
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(glam::IVec2::new(20, 30), Phase::Down, egui::Modifiers::NONE),
+        );
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(
+                glam::IVec2::new(140, 60),
+                Phase::Drag,
+                egui::Modifiers::NONE,
+            ),
+        );
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(glam::IVec2::new(140, 60), Phase::Up, egui::Modifiers::NONE),
+        );
+        assert_eq!(tool.anchor, Some(glam::IVec2::new(20, 30)));
+        assert_eq!(tool.settings.wrap_width, 120.0);
+
+        tool.text_area.set(Some((
+            glam::Vec2::new(20.0, 30.0),
+            glam::Vec2::new(140.0, 70.0),
+        )));
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(
+                glam::IVec2::new(140, 50),
+                Phase::Down,
+                egui::Modifiers::NONE,
+            ),
+        );
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(
+                glam::IVec2::new(200, 50),
+                Phase::Drag,
+                egui::Modifiers::NONE,
+            ),
+        );
+        tool.on_pointer(
+            &doc,
+            PointerEvent::new(glam::IVec2::new(200, 50), Phase::Up, egui::Modifiers::NONE),
+        );
+        assert_eq!(tool.anchor, Some(glam::IVec2::new(20, 30)));
+        assert_eq!(tool.settings.wrap_width, 180.0);
     }
 
     #[test]

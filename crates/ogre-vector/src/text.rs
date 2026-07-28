@@ -74,17 +74,16 @@ pub fn layout_and_rasterize(
     let mut max_y = 0.0f32;
 
     for run in buffer.layout_runs() {
-        let line_top = run.line_top;
         for glyph in run.glyphs {
-            let physical = glyph.physical((0.0, 0.0), 1.0);
+            let physical = glyph.physical((0.0, run.line_y), 1.0);
             let Some(image) = swash_cache.get_image(font_system, physical.cache_key) else {
                 continue;
             };
             if image.placement.width == 0 || image.placement.height == 0 {
                 continue;
             }
-            let gx = physical.x;
-            let gy = physical.y + line_top as i32;
+            let gx = physical.x + image.placement.left;
+            let gy = physical.y - image.placement.top;
             let img_w = image.placement.width;
             let img_h = image.placement.height;
             for py in 0..img_h {
@@ -189,6 +188,31 @@ mod tests {
             "expected non-empty buffer for 'AB' with a valid font"
         );
         assert!(w > 0.0 && h > 0.0, "expected positive rendered size");
+    }
+
+    #[test]
+    fn latin_glyphs_share_baseline() {
+        let (mut fs, mut cache) = font_system_or_skip();
+        if fs.db().faces().count() == 0 {
+            return;
+        }
+        let mut bottom = |text: &str| {
+            let block = TextBlock {
+                text: text.into(),
+                font_size: 32.0,
+                ..Default::default()
+            };
+            layout_and_rasterize(&mut fs, &mut cache, &block, None)
+                .0
+                .exact_bounds()
+                .unwrap()
+                .bottom() as i32
+        };
+        let difference = (bottom("t") - bottom("e")).abs();
+        assert!(
+            difference <= 1,
+            "glyph bottoms differ by {difference}px instead of sharing a baseline"
+        );
     }
 
     #[test]

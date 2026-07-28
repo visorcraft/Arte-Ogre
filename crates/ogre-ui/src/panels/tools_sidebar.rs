@@ -525,7 +525,7 @@ fn render_commit_mode(ui: &mut egui::Ui, mode: &mut VectorCommitMode) {
 /// field when a session starts (anchor placed or re-edit loaded).
 fn render_type_settings(ui: &mut egui::Ui, state: &mut AppState, palette: &theme::Palette) {
     ui.label(
-        RichText::new("TYPE")
+        RichText::new("TEXT")
             .size(theme::TEXT_CAPTION)
             .color(palette.separator_strong),
     );
@@ -537,9 +537,9 @@ fn render_type_settings(ui: &mut egui::Ui, state: &mut AppState, palette: &theme
     // Session status.
     ui.label(
         RichText::new(if entry_active {
-            "Editing — type on canvas or below · Enter commits"
+            "Editing · drag right handle to resize · Enter commits"
         } else {
-            "Click the canvas to place the text anchor"
+            "Click to place · drag to size a text box"
         })
         .size(theme::TEXT_CAPTION)
         .color(palette.separator_strong),
@@ -639,10 +639,10 @@ fn render_type_settings(ui: &mut egui::Ui, state: &mut AppState, palette: &theme
         );
         ui.add(
             egui::Slider::new(&mut settings.wrap_width, 0.0..=2000.0)
-                .text("Wrap width")
+                .text("Box width")
                 .suffix(" px"),
         )
-        .on_hover_text("0 = no wrap (point text). Draws a guide box on the canvas.");
+        .on_hover_text("0 = auto width. Drag the canvas box's right handle to resize.");
     }
 
     // Keep the shared foreground swatch in sync when Type color is edited.
