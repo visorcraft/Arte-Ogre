@@ -3586,6 +3586,10 @@ struct PanelViewer<'a> {
 impl TabViewer for PanelViewer<'_> {
     type Tab = Panel;
 
+    fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
+        egui::Id::new(*tab)
+    }
+
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
         match tab {
             Panel::Document(id) => self
@@ -4512,7 +4516,8 @@ mod tests {
             if let Some(resp) = resp {
                 height = resp.response.rect.height();
             }
-            let _ = ctx.end_pass();
+            // egui 0.36 debug-asserts if a font-atlas delta is dropped unapplied.
+            ctx.end_pass().textures_delta.clear();
         }
         // Heading + one line + a button row is well under 160px; the buggy
         // layout stretched it toward the full 2000px screen height.
@@ -4569,7 +4574,8 @@ mod tests {
             if let Some(resp) = resp {
                 height = resp.response.rect.height();
             }
-            let _ = ctx.end_pass();
+            // egui 0.36 debug-asserts if a font-atlas delta is dropped unapplied.
+            ctx.end_pass().textures_delta.clear();
         }
         assert!(
             height > 0.0 && height < 220.0,
@@ -4624,7 +4630,8 @@ mod tests {
                     left_edges = vec![path_left, format_left, bit_depth_left];
                 }
             }
-            let _ = ctx.end_pass();
+            // egui 0.36 debug-asserts if a font-atlas delta is dropped unapplied.
+            ctx.end_pass().textures_delta.clear();
         }
 
         assert_eq!(left_edges.len(), 3);
@@ -4687,7 +4694,8 @@ mod tests {
                     left_edges = vec![path_left, format_left, bit_depth_left];
                 }
             }
-            let _ = ctx.end_pass();
+            // egui 0.36 debug-asserts if a font-atlas delta is dropped unapplied.
+            ctx.end_pass().textures_delta.clear();
         }
 
         assert_eq!(left_edges.len(), 3);

@@ -84,7 +84,7 @@ pub fn import_image(path: impl AsRef<Path>) -> Result<Document, IoError> {
                 raw_rgb_u8_to_rgba32(buf.as_raw())
             } else {
                 let mut out = Vec::with_capacity(buf.as_raw().len() / 3);
-                for c in buf.as_raw().chunks_exact(3) {
+                for c in buf.as_raw().as_chunks::<3>().0 {
                     out.push(Rgba32F::new(
                         crate::color::srgb_to_linear(c[0] as f32 / 255.0),
                         crate::color::srgb_to_linear(c[1] as f32 / 255.0),
@@ -107,7 +107,7 @@ pub fn import_image(path: impl AsRef<Path>) -> Result<Document, IoError> {
                 raw_rgb_u16_to_rgba32(buf.as_raw())
             } else {
                 let mut out = Vec::with_capacity(buf.as_raw().len() / 3);
-                for c in buf.as_raw().chunks_exact(3) {
+                for c in buf.as_raw().as_chunks::<3>().0 {
                     out.push(Rgba32F::new(
                         crate::color::srgb_to_linear(c[0] as f32 / 65535.0),
                         crate::color::srgb_to_linear(c[1] as f32 / 65535.0),

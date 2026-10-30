@@ -162,7 +162,7 @@ impl History {
             .iter()
             .flat_map(|c| c.referenced_layers())
             .collect();
-        let evicted_redo: Vec<Box<dyn Command>> = self.redo.drain(..).collect();
+        let evicted_redo = std::mem::take(&mut self.redo);
         for evicted in evicted_redo {
             cleanup_if_unreferenced(evicted, &remaining_refs, doc);
         }

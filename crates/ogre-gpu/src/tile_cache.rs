@@ -160,7 +160,9 @@ impl TileTextureCache {
 
             map_staging_for_write(ctx, staging, bytes);
             {
-                let mut view = staging.get_mapped_range_mut(0..bytes as u64);
+                let mut view = staging
+                    .get_mapped_range_mut(0..bytes as u64)
+                    .expect("staging buffer is mapped");
                 for i in 0..count {
                     let src: &[u8] = bytemuck::cast_slice(tiles[chunk_start + i].as_slice());
                     view.slice(i * TILE_BYTES..(i + 1) * TILE_BYTES)
@@ -597,7 +599,9 @@ pub fn read_texture_to_vec(
         .expect("map_async callback dropped")
         .expect("failed to map readback buffer");
 
-    let data = buffer.get_mapped_range(..);
+    let data = buffer
+        .get_mapped_range(..)
+        .expect("failed to map readback buffer");
     let mut out = Vec::with_capacity(width * height);
     for row in 0..height {
         let start = row * padded_bytes_per_row;
@@ -673,12 +677,14 @@ pub fn read_rgba8_texture_to_vec(
         .expect("map_async callback dropped")
         .expect("failed to map readback buffer");
 
-    let data = buffer.get_mapped_range(..);
+    let data = buffer
+        .get_mapped_range(..)
+        .expect("failed to map readback buffer");
     let mut out = Vec::with_capacity(width * height);
     for row in 0..height {
         let start = row * padded_bytes_per_row;
         let row_bytes = &data[start..start + unpadded_bytes_per_row];
-        for chunk in row_bytes.chunks_exact(4) {
+        for chunk in row_bytes.as_chunks::<4>().0 {
             let scale = |b: u8| b as f32 / 255.0;
             out.push(Rgba32F::new(
                 scale(chunk[0]),

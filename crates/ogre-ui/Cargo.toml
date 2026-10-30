@@ -1,6 +1,6 @@
 [package]
 name = "ogre-ui"
-version = "1.8.2"
+version = "1.9.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
@@ -17,7 +17,7 @@ egui = { workspace = true }
 egui-wgpu = { workspace = true }
 eframe = { workspace = true }
 egui_dock = { workspace = true }
-egui_extras = { version = "0.35", default-features = false, features = ["svg", "image"] }
+egui_extras = { version = "0.36", default-features = false, features = ["svg", "image"] }
 glam = { workspace = true }
 kurbo = "0.13"
 ogre-core = { path = "../ogre-core" }
@@ -30,4 +30,4 @@ serde = { workspace = true }
 serde_json = "1"
 toml = { workspace = true }
 ureq = { workspace = true }
-usvg = "0.47"
+usvg = "0.49"

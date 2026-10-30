@@ -101,7 +101,9 @@ pub fn rgba32_to_srgb_u16(pixels: &[Rgba32F]) -> Vec<u16> {
 /// Convert `u8` RGBA bytes (assumed sRGB) to linear straight-alpha.
 pub fn srgb_u8_to_rgba32(bytes: &[u8]) -> Vec<Rgba32F> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| {
             Rgba32F::new(
                 srgb_to_linear(c[0] as f32 / 255.0),
@@ -116,7 +118,9 @@ pub fn srgb_u8_to_rgba32(bytes: &[u8]) -> Vec<Rgba32F> {
 /// Convert `u16` RGBA bytes (assumed sRGB) to linear straight-alpha.
 pub fn srgb_u16_to_rgba32(bytes: &[u16]) -> Vec<Rgba32F> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| {
             Rgba32F::new(
                 srgb_to_linear(c[0] as f32 / 65535.0),
@@ -131,7 +135,9 @@ pub fn srgb_u16_to_rgba32(bytes: &[u16]) -> Vec<Rgba32F> {
 /// Convert `u8` RGBA bytes to normalised straight-alpha without a transfer function.
 pub fn raw_u8_to_rgba32(bytes: &[u8]) -> Vec<Rgba32F> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| {
             Rgba32F::new(
                 c[0] as f32 / 255.0,
@@ -146,7 +152,9 @@ pub fn raw_u8_to_rgba32(bytes: &[u8]) -> Vec<Rgba32F> {
 /// Convert `u8` RGB bytes to normalised straight-alpha without a transfer function.
 pub fn raw_rgb_u8_to_rgba32(bytes: &[u8]) -> Vec<Rgba32F> {
     bytes
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|c| {
             Rgba32F::new(
                 c[0] as f32 / 255.0,
@@ -161,7 +169,9 @@ pub fn raw_rgb_u8_to_rgba32(bytes: &[u8]) -> Vec<Rgba32F> {
 /// Convert `u16` RGBA bytes to normalised straight-alpha without a transfer function.
 pub fn raw_u16_to_rgba32(bytes: &[u16]) -> Vec<Rgba32F> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| {
             Rgba32F::new(
                 c[0] as f32 / 65535.0,
@@ -176,7 +186,9 @@ pub fn raw_u16_to_rgba32(bytes: &[u16]) -> Vec<Rgba32F> {
 /// Convert `u16` RGB bytes to normalised straight-alpha without a transfer function.
 pub fn raw_rgb_u16_to_rgba32(bytes: &[u16]) -> Vec<Rgba32F> {
     bytes
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|c| {
             Rgba32F::new(
                 c[0] as f32 / 65535.0,

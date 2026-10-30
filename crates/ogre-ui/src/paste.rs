@@ -50,7 +50,7 @@ pub fn read_clipboard_image() -> Option<(u32, u32, Vec<Rgba32F>)> {
     }
 
     let mut pixels = Vec::with_capacity((w * h) as usize);
-    for chunk in img.bytes[..expected_len].chunks_exact(4) {
+    for chunk in img.bytes[..expected_len].as_chunks::<4>().0 {
         pixels.push(Rgba32F::new(
             srgb_u8_to_linear(chunk[0]),
             srgb_u8_to_linear(chunk[1]),

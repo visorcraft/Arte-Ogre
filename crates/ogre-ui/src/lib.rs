@@ -167,7 +167,7 @@ impl eframe::App for OgreApp {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .map(|f| f.path().to_path_buf())
                 .collect()
         });
         if !dropped.is_empty() {

@@ -219,7 +219,7 @@ After install, launch with `arte-ogre`, then use **File → Open**.
 | **Color** | `lcms2` (ICC) |
 | **AI matte** | IS-Net via pure-Rust ONNX (`tract`), optional `ml` feature |
 | **Plugins** | `wasmtime` (WASM) + `mlua` (Lua), sandboxed |
-| **Version** | Workspace crates at `1.8.2` (see `Cargo.toml` members) |
+| **Version** | Workspace crates at `1.9.0` (see `Cargo.toml` members) |
 
 The crates form one dependency chain: `ogre-core` → `ogre-gpu` → `ogre-ui` →
 `ogre` (binary), with `ogre-io`, `ogre-plugins`, and `ogre-vector` alongside.

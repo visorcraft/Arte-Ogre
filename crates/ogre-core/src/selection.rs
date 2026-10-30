@@ -543,7 +543,7 @@ impl Selection {
                 continue;
             }
             xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            for pair in xs.chunks_exact(2) {
+            for pair in xs.as_chunks::<2>().0 {
                 let x_start = (pair[0].ceil() as i32).clamp(bounds.x, bounds.right() as i32);
                 let x_end = (pair[1].floor() as i32 + 1).clamp(bounds.x, bounds.right() as i32);
                 for x in x_start..x_end {

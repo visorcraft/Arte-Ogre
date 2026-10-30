@@ -19,7 +19,7 @@ use zip::ZipArchive;
 
 // Pins the `()` extension type; bare `FileOptions::default()` is ambiguous
 // because zip implements `FileOptionExtension` for more than one type.
-fn file_options() -> FileOptions<'static, ()> {
+fn file_options() -> zip::write::SimpleFileOptions {
     FileOptions::default()
 }
 
@@ -54,7 +54,7 @@ pub fn import_ora(path: impl AsRef<Path>) -> Result<Document, IoError> {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                 let tag_name = e.name();
                 let name = tag_name.as_ref();
-                if name == b"image" {
+                if name == "image" {
                     let attrs = attrs_to_map(e)?;
                     let w = attrs
                         .get("w")
@@ -70,7 +70,7 @@ pub fn import_ora(path: impl AsRef<Path>) -> Result<Document, IoError> {
                         ));
                     }
                     doc = Some(Document::new(w, h));
-                } else if name == b"stack" {
+                } else if name == "stack" {
                     if let Some(ref mut doc) = doc {
                         let attrs = attrs_to_map(e)?;
                         let layer_name = attrs.get("name").cloned().unwrap_or_default();
@@ -91,7 +91,7 @@ pub fn import_ora(path: impl AsRef<Path>) -> Result<Document, IoError> {
                         parent_stack.push(group);
                         stack.push(Vec::new());
                     }
-                } else if name == b"layer" {
+                } else if name == "layer" {
                     if let Some(ref mut doc) = doc {
                         let attrs = attrs_to_map(e)?;
                         let src = attrs
@@ -141,7 +141,7 @@ pub fn import_ora(path: impl AsRef<Path>) -> Result<Document, IoError> {
             Ok(Event::End(ref e)) => {
                 let tag_name = e.name();
                 let name = tag_name.as_ref();
-                if name == b"stack" {
+                if name == "stack" {
                     let ids = stack.pop().unwrap();
                     let parent = parent_stack.pop().flatten();
                     if let Some(ref mut doc) = doc {
@@ -176,8 +176,8 @@ fn attrs_to_map(
     let mut map = std::collections::HashMap::new();
     for attr in e.attributes() {
         let attr = attr?;
-        let key = String::from_utf8_lossy(attr.key.as_ref()).into_owned();
-        let value = String::from_utf8_lossy(&attr.value).into_owned();
+        let key = attr.key.as_ref().to_owned();
+        let value = attr.value.into_owned();
         map.insert(key, value);
     }
     Ok(map)

@@ -475,7 +475,9 @@ fn read_rgba8_texture_to_vec(
         .expect("map_async callback dropped")
         .expect("failed to map readback buffer");
 
-    let data = buffer.get_mapped_range(..);
+    let data = buffer
+        .get_mapped_range(..)
+        .expect("failed to map readback buffer");
     let mut out = Vec::with_capacity(width * height * bytes_per_pixel);
     for row in 0..height {
         let start = row * padded_bytes_per_row;

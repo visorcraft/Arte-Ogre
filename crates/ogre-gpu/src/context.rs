@@ -69,6 +69,7 @@ impl GpuContext {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
         .expect("no suitable GPU adapter found");
 
@@ -177,6 +178,7 @@ mod tests {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: None,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
         .expect("no suitable GPU adapter found");
 
@@ -202,6 +204,7 @@ mod tests {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: None,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
         .expect("no suitable GPU adapter found");
 

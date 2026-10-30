@@ -1893,10 +1893,14 @@ impl FilterRunner {
         }
 
         let output = {
-            let data = buffer_slice.get_mapped_range();
+            let data = buffer_slice
+                .get_mapped_range()
+                .map_err(|_| OgreError::FilterFailed("buffer map failed"))?;
             let floats: &[f32] = bytemuck::cast_slice(&data);
             floats
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|chunk| Rgba32F::new(chunk[0], chunk[1], chunk[2], chunk[3]))
                 .collect()
         };
